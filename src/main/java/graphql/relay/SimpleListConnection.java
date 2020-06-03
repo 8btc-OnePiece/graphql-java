@@ -90,6 +90,7 @@ public class SimpleListConnection<T> implements DataFetcher<Connection<T>>, Triv
         Edge<T> lastEdge = edges.get(edges.size() - 1);
 
         PageInfo pageInfo = new DefaultPageInfo(
+                edges.size(),
                 firstEdge.getCursor(),
                 lastEdge.getCursor(),
                 !firstEdge.getCursor().equals(firstPresliceCursor),
@@ -103,7 +104,7 @@ public class SimpleListConnection<T> implements DataFetcher<Connection<T>>, Triv
     }
 
     private Connection<T> emptyConnection() {
-        PageInfo pageInfo = new DefaultPageInfo(null, null, false, false);
+        PageInfo pageInfo = new DefaultPageInfo(0, null, null, false, false);
         return new DefaultConnection<>(Collections.emptyList(), pageInfo);
     }
 

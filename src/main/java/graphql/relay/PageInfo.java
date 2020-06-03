@@ -11,6 +11,8 @@ import graphql.PublicApi;
 @PublicApi
 public interface PageInfo {
 
+    int getTotalCount();
+
     /**
      * @return cursor to the first edge, or null if this page is empty.
      */
@@ -30,4 +32,5 @@ public interface PageInfo {
      * @return true if and only if this page is not the last page. only meaningful when you gave the {@code first} argument.
      */
     boolean isHasNextPage();
+
 }

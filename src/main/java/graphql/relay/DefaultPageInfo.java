@@ -6,12 +6,14 @@ import graphql.PublicApi;
 @PublicApi
 public class DefaultPageInfo implements PageInfo {
 
+    private final int totalCount;
     private final ConnectionCursor startCursor;
     private final ConnectionCursor endCursor;
     private final boolean hasPreviousPage;
     private final boolean hasNextPage;
 
-    public DefaultPageInfo(ConnectionCursor startCursor, ConnectionCursor endCursor, boolean hasPreviousPage, boolean hasNextPage) {
+    public DefaultPageInfo(int totalCount, ConnectionCursor startCursor, ConnectionCursor endCursor, boolean hasPreviousPage, boolean hasNextPage) {
+        this.totalCount = totalCount;
         this.startCursor = startCursor;
         this.endCursor = endCursor;
         this.hasPreviousPage = hasPreviousPage;
@@ -19,10 +21,14 @@ public class DefaultPageInfo implements PageInfo {
     }
 
     @Override
+    public int getTotalCount() {
+        return totalCount;
+    }
+
+    @Override
     public ConnectionCursor getStartCursor() {
         return startCursor;
     }
-
 
     @Override
     public ConnectionCursor getEndCursor() {
