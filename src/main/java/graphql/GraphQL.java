@@ -1,5 +1,6 @@
 package graphql;
 
+import graphql.cachecontrol.CacheControl;
 import graphql.execution.AbortExecutionException;
 import graphql.execution.AsyncExecutionStrategy;
 import graphql.execution.AsyncSerialExecutionStrategy;
@@ -45,6 +46,7 @@ import java.util.function.UnaryOperator;
 import static graphql.Assert.assertNotNull;
 import static graphql.execution.ExecutionIdProvider.DEFAULT_EXECUTION_ID_PROVIDER;
 import static graphql.execution.instrumentation.DocumentAndVariables.newDocumentAndVariables;
+import static java.util.concurrent.CompletableFuture.completedFuture;
 
 /**
  * This class is where all graphql-java query execution begins.  It combines the objects that are needed
@@ -523,10 +525,12 @@ public class GraphQL {
             executionResult = executionResult.whenComplete(executionInstrumentation::onCompleted);
             //
             // allow instrumentation to tweak the result
-            executionResult = executionResult.thenCompose(result -> instrumentation.instrumentExecutionResult(result, instrumentationParameters));
+            CacheControl cacheControl = executionInput.getCacheControl();
+            executionResult = executionResult.thenCompose(result -> instrumentation.instrumentExecutionResult(result, instrumentationParameters))
+                    .thenCompose(result -> completedFuture(cacheControl.addTo(result)));
             return executionResult;
         } catch (AbortExecutionException abortException) {
-            return CompletableFuture.completedFuture(abortException.toExecutionResult());
+            return completedFuture(abortException.toExecutionResult());
         }
     }
 
@@ -550,7 +554,7 @@ public class GraphQL {
         };
         PreparsedDocumentEntry preparsedDoc = preparsedDocumentProvider.getDocument(executionInput, computeFunction);
         if (preparsedDoc.hasErrors()) {
-            return CompletableFuture.completedFuture(new ExecutionResultImpl(preparsedDoc.getErrors()));
+            return completedFuture(new ExecutionResultImpl(preparsedDoc.getErrors()));
         }
 
         return execute(executionInputRef.get(), preparsedDoc.getDocument(), graphQLSchema, instrumentationState);
