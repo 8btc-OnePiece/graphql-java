@@ -43,14 +43,34 @@ public class ExceptionWhileDataFetching implements GraphQLError {
      */
     private Map<String, Object> mkExtensions(Throwable exception) {
         Map<String, Object> extensions = null;
-        if (exception instanceof GraphQLError) {
-            Map<String, Object> map = ((GraphQLError) exception).getExtensions();
+        GraphQLError graphQLError = checkoutGraphqlErrorFromExceptionStack(exception);
+        if (graphQLError != null) {
+            Map<String, Object> map = graphQLError.getExtensions();
             if (map != null) {
                 extensions = new LinkedHashMap<>();
                 extensions.putAll(map);
             }
         }
+
         return extensions;
+    }
+
+    /*
+        when some exception occur in no-main thread, the exception may be wrapped by other Exception,
+        eg: java.util.concurrent.CompletionException
+        so we need try to checkout GraphQLError from the exception stack
+     */
+    private GraphQLError checkoutGraphqlErrorFromExceptionStack(Throwable exception) {
+        if (exception instanceof GraphQLError) {
+            return (GraphQLError)exception;
+        }
+        while (!exception.getCause().equals(exception)) {
+            exception = exception.getCause();
+            if (exception instanceof GraphQLError) {
+                return (GraphQLError)exception;
+            }
+        }
+        return null;
     }
 
     public Throwable getException() {
