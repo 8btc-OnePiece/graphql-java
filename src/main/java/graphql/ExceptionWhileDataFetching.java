@@ -64,7 +64,7 @@ public class ExceptionWhileDataFetching implements GraphQLError {
         if (exception instanceof GraphQLError) {
             return (GraphQLError)exception;
         }
-        while (!exception.getCause().equals(exception)) {
+        while (exception.getCause() != null) {
             exception = exception.getCause();
             if (exception instanceof GraphQLError) {
                 return (GraphQLError)exception;
