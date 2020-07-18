@@ -61,15 +61,12 @@ public class ExceptionWhileDataFetching implements GraphQLError {
         so we need try to checkout GraphQLError from the exception stack
      */
     private GraphQLError checkoutGraphqlErrorFromExceptionStack(Throwable exception) {
-        if (exception instanceof GraphQLError) {
-            return (GraphQLError)exception;
-        }
-        while (exception.getCause() != null) {
-            exception = exception.getCause();
+        do {
             if (exception instanceof GraphQLError) {
-                return (GraphQLError)exception;
+                return (GraphQLError) exception;
             }
-        }
+            exception = exception.getCause();
+        } while (exception != null);
         return null;
     }
 
