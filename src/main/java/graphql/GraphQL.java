@@ -526,8 +526,7 @@ public class GraphQL {
             //
             // allow instrumentation to tweak the result
             CacheControl cacheControl = executionInput.getCacheControl();
-            executionResult = executionResult.thenCompose(result -> instrumentation.instrumentExecutionResult(result, instrumentationParameters))
-                    .thenCompose(result -> completedFuture(cacheControl.addTo(result)));
+            executionResult = executionResult.thenCompose(result -> instrumentation.instrumentExecutionResult(cacheControl.addTo(result), instrumentationParameters));
             return executionResult;
         } catch (AbortExecutionException abortException) {
             return completedFuture(abortException.toExecutionResult());
