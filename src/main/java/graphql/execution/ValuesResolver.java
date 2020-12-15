@@ -114,6 +114,11 @@ public class ValuesResolver {
             Object value;
             if (argument != null) {
                 value = coerceValueAst(fieldVisibility, type, argument.getValue(), variables);
+                // avoid param = null
+                if (value == null && nonullParam != null) {
+                    ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
+                    value = coerceValueAst(fieldVisibility, type, objectValue, variables);
+                }
             } else if (nonullParam != null && defaultValue == null && type instanceof GraphQLInputObjectType) {
                 // if it has a value even if a blank value, it can be initialize
                 ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
