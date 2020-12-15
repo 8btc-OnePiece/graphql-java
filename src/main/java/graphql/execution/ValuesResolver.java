@@ -14,9 +14,11 @@ import graphql.schema.Coercing;
 import graphql.schema.CoercingParseValueException;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLCodeRegistry;
+import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLInputObjectField;
 import graphql.schema.GraphQLInputObjectType;
+import graphql.schema.GraphQLInputType;
 import graphql.schema.GraphQLList;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
@@ -39,6 +41,8 @@ import static graphql.schema.visibility.DefaultGraphqlFieldVisibility.DEFAULT_FI
 @SuppressWarnings("rawtypes")
 @Internal
 public class ValuesResolver {
+
+    private static final String NonNullParam = "nonNullParam";
 
     /**
      * This method coerces the "raw" variables values provided to the engine. The coerced values will be used to
@@ -102,12 +106,20 @@ public class ValuesResolver {
         Map<String, Argument> argumentMap = argumentMap(arguments);
         for (GraphQLArgument fieldArgument : argumentTypes) {
             String argName = fieldArgument.getName();
+            GraphQLInputType type = fieldArgument.getType();
             Argument argument = argumentMap.get(argName);
+            Object defaultValue = fieldArgument.getDefaultValue();
+            GraphQLDirective nonullParam = fieldArgument.getDirective(NonNullParam);
+            GraphqlFieldVisibility fieldVisibility = codeRegistry.getFieldVisibility();
             Object value;
             if (argument != null) {
-                value = coerceValueAst(codeRegistry.getFieldVisibility(), fieldArgument.getType(), argument.getValue(), variables);
+                value = coerceValueAst(fieldVisibility, type, argument.getValue(), variables);
+            } else if (nonullParam != null && defaultValue == null && type instanceof GraphQLInputObjectType) {
+                // if it has a value even if a blank value, it can be initialize
+                ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
+                value = coerceValueAst(fieldVisibility, type, objectValue, variables);
             } else {
-                value = fieldArgument.getDefaultValue();
+                value = defaultValue;
             }
             // only put an arg into the result IF they specified a variable at all or
             // the default value ended up being something non null
@@ -303,6 +315,9 @@ public class ValuesResolver {
                 }
             } else if (inputTypeField.getDefaultValue() != null) {
                 result.put(inputTypeField.getName(), inputTypeField.getDefaultValue());
+            } else if (inputTypeField.getDirective(NonNullParam) != null) {
+                ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
+                result.put(inputTypeField.getName(), coerceValueAst(fieldVisibility, inputTypeField.getType(), objectValue, variables));
             } else {
                 assertNonNullInputField(inputTypeField);
             }
