@@ -12,7 +12,10 @@ import graphql.execution.instrumentation.parameters.InstrumentationExecutionStra
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLObjectType;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,29 @@ public class AsyncExecutionStrategy extends AbstractAsyncExecutionStrategy {
         super(exceptionHandler);
     }
 
+    class HasValueNode {
+        boolean hasValue = false;
+        Object value;
+    }
+
+    private HasValueNode getHasValueNode(ExecutionStrategyParameters newParameters, String fieldName){
+        HasValueNode node = new HasValueNode();
+        if (newParameters.getFields().getSubField(fieldName).getSingleField().getSelectionSet() == null) {
+            try {
+                Object source = newParameters.getSource();
+                Field declaredField = source.getClass().getDeclaredField(fieldName);
+                declaredField.setAccessible(true);
+                node.value = declaredField.get(source);
+                if ((node.value instanceof String || node.value instanceof Number)) {
+                    node.hasValue = true;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return node;
+    }
+
     @Override
     @SuppressWarnings("FutureReturnValueIgnored")
     public CompletableFuture<ExecutionResult> execute(ExecutionContext executionContext, ExecutionStrategyParameters parameters) throws NonNullableFieldWasNullException {
@@ -57,6 +83,7 @@ public class AsyncExecutionStrategy extends AbstractAsyncExecutionStrategy {
         List<String> fieldNames = new ArrayList<>(fields.keySet());
         List<CompletableFuture<FieldValueInfo>> futures = new ArrayList<>();
         List<String> resolvedFields = new ArrayList<>();
+        Map<String, Object> hasValueNodemap = new LinkedHashMap<>(fieldNames.size());
         for (String fieldName : fieldNames) {
             MergedField currentField = fields.getSubField(fieldName);
 
@@ -67,19 +94,26 @@ public class AsyncExecutionStrategy extends AbstractAsyncExecutionStrategy {
             resolvedFields.add(fieldName);
             CompletableFuture<FieldValueInfo> future;
 
-            if (isDeferred(executionContext, newParameters, currentField)) {
-                executionStrategyCtx.onDeferredField(currentField);
-                future = resolveFieldWithInfoToNull(executionContext, newParameters);
-            } else {
-                future = resolveFieldWithInfo(executionContext, newParameters);
+            HasValueNode node = getHasValueNode(newParameters, fieldName);
+
+            if (node.hasValue) {
+                hasValueNodemap.put(fieldName, node.value);
+            } else{
+                if (isDeferred(executionContext, newParameters, currentField)) {
+                    executionStrategyCtx.onDeferredField(currentField);
+                    future = resolveFieldWithInfoToNull(executionContext, newParameters);
+                } else {
+                    future = resolveFieldWithInfo(executionContext, newParameters);
+                }
+                futures.add(future);
             }
-            futures.add(future);
+
         }
         CompletableFuture<ExecutionResult> overallResult = new CompletableFuture<>();
         executionStrategyCtx.onDispatched(overallResult);
 
         Async.each(futures).whenComplete((completeValueInfos, throwable) -> {
-            BiConsumer<List<ExecutionResult>, Throwable> handleResultsConsumer = handleResults(executionContext, resolvedFields, overallResult);
+            BiConsumer<List<ExecutionResult>, Throwable> handleResultsConsumer = handleResults(executionContext, resolvedFields, overallResult, hasValueNodemap);
             if (throwable != null) {
                 handleResultsConsumer.accept(null, throwable.getCause());
                 return;

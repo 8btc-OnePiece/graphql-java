@@ -28,10 +28,32 @@ public abstract class AbstractAsyncExecutionStrategy extends ExecutionStrategy {
             Map<String, Object> resolvedValuesByField = new LinkedHashMap<>();
             int ix = 0;
             for (ExecutionResult executionResult : results) {
-
                 String fieldName = fieldNames.get(ix++);
                 resolvedValuesByField.put(fieldName, executionResult.getData());
             }
+
+            overallResult.complete(new ExecutionResultImpl(resolvedValuesByField, executionContext.getErrors()));
+        };
+    }
+
+    protected BiConsumer<List<ExecutionResult>, Throwable> handleResults(ExecutionContext executionContext, List<String> fieldNames, CompletableFuture<ExecutionResult> overallResult, Map<String, Object> hasValueNodemap) {
+        return (List<ExecutionResult> results, Throwable exception) -> {
+            if (exception != null) {
+                handleNonNullException(executionContext, overallResult, exception);
+                return;
+            }
+            Map<String, Object> resolvedValuesByField = new LinkedHashMap<>();
+            int ix = 0;
+            for (String fieldName : fieldNames) {
+                if (hasValueNodemap.containsKey(fieldName)) {
+                    resolvedValuesByField.put(fieldName, hasValueNodemap.get(fieldName));
+                } else {
+                    resolvedValuesByField.put(fieldName, results.get(ix).getData());
+                    ix++;
+                }
+            }
+
+            resolvedValuesByField.putAll(hasValueNodemap);
             overallResult.complete(new ExecutionResultImpl(resolvedValuesByField, executionContext.getErrors()));
         };
     }
