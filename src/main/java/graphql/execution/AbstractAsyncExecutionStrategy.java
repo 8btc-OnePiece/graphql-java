@@ -20,20 +20,7 @@ public abstract class AbstractAsyncExecutionStrategy extends ExecutionStrategy {
     }
 
     protected BiConsumer<List<ExecutionResult>, Throwable> handleResults(ExecutionContext executionContext, List<String> fieldNames, CompletableFuture<ExecutionResult> overallResult) {
-        return (List<ExecutionResult> results, Throwable exception) -> {
-            if (exception != null) {
-                handleNonNullException(executionContext, overallResult, exception);
-                return;
-            }
-            Map<String, Object> resolvedValuesByField = new LinkedHashMap<>();
-            int ix = 0;
-            for (ExecutionResult executionResult : results) {
-                String fieldName = fieldNames.get(ix++);
-                resolvedValuesByField.put(fieldName, executionResult.getData());
-            }
-
-            overallResult.complete(new ExecutionResultImpl(resolvedValuesByField, executionContext.getErrors()));
-        };
+        return handleResults(executionContext, fieldNames, overallResult, new LinkedHashMap<>());
     }
 
     protected BiConsumer<List<ExecutionResult>, Throwable> handleResults(ExecutionContext executionContext, List<String> fieldNames, CompletableFuture<ExecutionResult> overallResult, Map<String, Object> hasValueNodemap) {
