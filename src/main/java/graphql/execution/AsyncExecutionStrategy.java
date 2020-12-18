@@ -11,6 +11,9 @@ import graphql.execution.instrumentation.parameters.InstrumentationDeferredField
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionStrategyParameters;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLObjectType;
+import graphql.schema.GraphQLScalarType;
+import graphql.schema.GraphQLSchemaElement;
+import graphql.schema.GraphQLType;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -54,14 +57,17 @@ public class AsyncExecutionStrategy extends AbstractAsyncExecutionStrategy {
 
     private HasValueNode getHasValueNode(ExecutionStrategyParameters newParameters, String fieldName){
         HasValueNode node = new HasValueNode();
-        if (newParameters.getFields().getSubField(fieldName).getSingleField().getSelectionSet() == null) {
+        if (newParameters.getExecutionStepInfo().getUnwrappedNonNullType() instanceof GraphQLObjectType
+                && newParameters.getFields().getSubField(fieldName).getSingleField().getSelectionSet() == null) {
             try {
                 Object source = newParameters.getSource();
-                Field declaredField = source.getClass().getDeclaredField(fieldName);
-                declaredField.setAccessible(true);
-                node.value = declaredField.get(source);
-                if ((node.value instanceof String || node.value instanceof Number)) {
-                    node.hasValue = true;
+                if (!(source instanceof GraphQLSchemaElement)) {
+                    Field declaredField = source.getClass().getDeclaredField(fieldName);
+                    declaredField.setAccessible(true);
+                    node.value = declaredField.get(source);
+                    if ((node.value instanceof String || node.value instanceof Number)) {
+                        node.hasValue = true;
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -94,7 +100,7 @@ public class AsyncExecutionStrategy extends AbstractAsyncExecutionStrategy {
             resolvedFields.add(fieldName);
             CompletableFuture<FieldValueInfo> future;
 
-            HasValueNode node = getHasValueNode(newParameters, fieldName);
+            HasValueNode node = getHasValueNode(parameters, fieldName);
 
             if (node.hasValue) {
                 hasValueNodemap.put(fieldName, node.value);
