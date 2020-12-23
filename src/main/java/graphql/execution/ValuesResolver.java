@@ -44,6 +44,8 @@ public class ValuesResolver {
 
     private static final String NonNullParam = "nonNullParam";
 
+    private static final ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
+
     /**
      * This method coerces the "raw" variables values provided to the engine. The coerced values will be used to
      * provide arguments to {@link graphql.schema.DataFetchingEnvironment}
@@ -116,12 +118,10 @@ public class ValuesResolver {
                 value = coerceValueAst(fieldVisibility, type, argument.getValue(), variables);
                 // avoid param = null
                 if (value == null && nonullParam != null) {
-                    ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
                     value = coerceValueAst(fieldVisibility, type, objectValue, variables);
                 }
             } else if (nonullParam != null && defaultValue == null && type instanceof GraphQLInputObjectType) {
                 // if it has a value even if a blank value, it can be initialize
-                ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
                 value = coerceValueAst(fieldVisibility, type, objectValue, variables);
             } else {
                 value = defaultValue;
@@ -321,7 +321,6 @@ public class ValuesResolver {
             } else if (inputTypeField.getDefaultValue() != null) {
                 result.put(inputTypeField.getName(), inputTypeField.getDefaultValue());
             } else if (inputTypeField.getDirective(NonNullParam) != null) {
-                ObjectValue objectValue = new ObjectValue(Collections.singletonList(new ObjectField("", null)));
                 result.put(inputTypeField.getName(), coerceValueAst(fieldVisibility, inputTypeField.getType(), objectValue, variables));
             } else {
                 assertNonNullInputField(inputTypeField);
