@@ -103,7 +103,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
     @Override
     public Map<String, Object> getArguments() {
-        return Collections.unmodifiableMap(arguments);
+        return arguments;
     }
 
     @Override
