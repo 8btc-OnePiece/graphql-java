@@ -68,19 +68,19 @@ public class TracingSupport implements InstrumentationState {
                 // nothing to do
             };
         }
+        ExecutionStepInfo executionStepInfo = dataFetchingEnvironment.getExecutionStepInfo();
+        // /coin/coinDataCentre/coinChain/activeAddressTendency[2]/value
+        List<Object> paths = executionStepInfo.getPath().toList();
+        // if this value in list ,not need tracing
+        if (paths.size() >= 2 && paths.get(paths.size() - 2) instanceof Integer) {
+            return () -> {
+            };
+        }
         long startFieldFetch = System.nanoTime();
         return () -> {
             long now = System.nanoTime();
             long duration = now - startFieldFetch;
             long startOffset = startFieldFetch - startRequestNanos;
-            ExecutionStepInfo executionStepInfo = dataFetchingEnvironment.getExecutionStepInfo();
-            // /coin/coinDataCentre/coinChain/activeAddressTendency[2]/value
-            List<Object> paths = executionStepInfo.getPath().toList();
-            // if this value in list ,not need tracing
-            if (paths.size() >= 2 && paths.get(paths.size() - 2) instanceof Integer) {
-                return;
-            }
-
             Map<String, Object> fetchMap = new LinkedHashMap<>();
             fetchMap.put("path", paths);
             fetchMap.put("parentType", simplePrint(executionStepInfo.getParent().getUnwrappedNonNullType()));
