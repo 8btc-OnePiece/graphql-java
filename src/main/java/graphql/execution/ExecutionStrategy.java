@@ -547,7 +547,7 @@ public abstract class ExecutionStrategy {
                 completeListCtx.onCompleted(executionResult, exception);
                 return;
             }
-            List<Object> completedResults = new ArrayList<>();
+            List<Object> completedResults = new ArrayList<>(results.size());
             for (ExecutionResult completedValue : results) {
                 completedResults.add(completedValue.getData());
             }
