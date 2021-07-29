@@ -27,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static graphql.Assert.assertNotNull;
@@ -131,13 +132,10 @@ public class ChainedInstrumentation implements Instrumentation {
     @Override
     public InstrumentationContext<ExecutionResult> beginField(InstrumentationFieldParameters parameters) {
         int size = instrumentations.size();
-        List<InstrumentationContext<ExecutionResult>> list = new ArrayList<>(size);
-        for (Instrumentation instrumentation : instrumentations) {
+        return new ChainedInstrumentationContext<>(instrumentations.stream().map(instrumentation -> {
             InstrumentationState state = getState(instrumentation, parameters.getInstrumentationState());
-            InstrumentationContext<ExecutionResult> context = instrumentation.beginField(parameters.withNewState(state));
-            list.add(context);
-        }
-        return new ChainedInstrumentationContext<>(list);
+            return instrumentation.beginField(parameters.withNewState(state));
+        }).collect(Collectors.toCollection(() -> new ArrayList<>(size))));
     }
 
     @Override

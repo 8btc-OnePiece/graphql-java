@@ -244,7 +244,8 @@ public class ExecutionPath {
         if (parent == null) {
             return Collections.emptyList();
         }
-        List<Object> list = new ArrayList<>();
+        int size = getPathSize();
+        List<Object> list = new ArrayList<>(size);
         ExecutionPath p = this;
         while (p.segment != null) {
             list.add(p.segment.getValue());
@@ -252,6 +253,16 @@ public class ExecutionPath {
         }
         Collections.reverse(list);
         return list;
+    }
+
+    private int getPathSize() {
+        int size = 0;
+        ExecutionPath p = this;
+        while (p.segment != null) {
+            size++;
+            p = p.parent;
+        }
+        return size;
     }
 
 
