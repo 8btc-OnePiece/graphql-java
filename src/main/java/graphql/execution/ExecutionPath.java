@@ -6,6 +6,7 @@ import graphql.PublicApi;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.StringTokenizer;
 
@@ -244,8 +245,7 @@ public class ExecutionPath {
         if (parent == null) {
             return Collections.emptyList();
         }
-        int size = getPathSize();
-        List<Object> list = new ArrayList<>(size);
+        List<Object> list = new LinkedList<>();
         ExecutionPath p = this;
         while (p.segment != null) {
             list.add(p.segment.getValue());
@@ -253,16 +253,6 @@ public class ExecutionPath {
         }
         Collections.reverse(list);
         return list;
-    }
-
-    private int getPathSize() {
-        int size = 0;
-        ExecutionPath p = this;
-        while (p.segment != null) {
-            size++;
-            p = p.parent;
-        }
-        return size;
     }
 
 
