@@ -21,11 +21,13 @@ import graphql.schema.DataFetcher;
 import graphql.schema.GraphQLSchema;
 import graphql.validation.ValidationError;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import static graphql.Assert.assertNotNull;
 import static java.util.stream.Collectors.toList;
@@ -128,12 +130,14 @@ public class ChainedInstrumentation implements Instrumentation {
 
     @Override
     public InstrumentationContext<ExecutionResult> beginField(InstrumentationFieldParameters parameters) {
-        return new ChainedInstrumentationContext<>(instrumentations.stream()
-                .map(instrumentation -> {
-                    InstrumentationState state = getState(instrumentation, parameters.getInstrumentationState());
-                    return instrumentation.beginField(parameters.withNewState(state));
-                })
-                .collect(toList()));
+        int size = instrumentations.size();
+        List<InstrumentationContext<ExecutionResult>> list = new ArrayList<>(size);
+        for (Instrumentation instrumentation : instrumentations) {
+            InstrumentationState state = getState(instrumentation, parameters.getInstrumentationState());
+            InstrumentationContext<ExecutionResult> context = instrumentation.beginField(parameters.withNewState(state));
+            list.add(context);
+        }
+        return new ChainedInstrumentationContext<>(list);
     }
 
     @Override
