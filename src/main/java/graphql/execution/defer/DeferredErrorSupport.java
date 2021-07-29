@@ -14,7 +14,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 @Internal
 public class DeferredErrorSupport {
 
-    private List<GraphQLError> errors;
+    private final List<GraphQLError> errors = new CopyOnWriteArrayList<>();
 
     public void onFetchingException(ExecutionStrategyParameters parameters, Throwable e) {
         ExceptionWhileDataFetching error = new ExceptionWhileDataFetching(parameters.getPath(), e, parameters.getField().getSingleField().getSourceLocation());
@@ -22,18 +22,10 @@ public class DeferredErrorSupport {
     }
 
     public void onError(GraphQLError gError) {
-        initErrors();
         errors.add(gError);
     }
 
     public List<GraphQLError> getErrors() {
-        initErrors();
         return errors;
-    }
-
-    private void initErrors() {
-        if (errors == null) {
-            errors = new CopyOnWriteArrayList<>();
-        }
     }
 }
