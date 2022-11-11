@@ -11,6 +11,19 @@ import graphql.PublicApi;
 @PublicApi
 public interface PageInfo {
 
+    /**
+     * If the connection list is based on buffer, we need to recommend to client the duration
+     * it needs to reset cursor when request first page.
+     * default 0 second - the connection isn't based on buffer, don't need to reset.
+     * @return
+     */
+    default int getCursorResetDuration(){
+        return 0;
+    }
+
+    /**
+     * @return the node's total count
+     */
     int getTotalCount();
 
     /**
