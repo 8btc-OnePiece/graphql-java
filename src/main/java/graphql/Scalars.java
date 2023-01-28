@@ -70,6 +70,8 @@ public class Scalars {
                 } catch (ArithmeticException e) {
                     return null;
                 }
+            } else if (input instanceof IntValue) {
+                return ((IntValue) input).getValue().intValue();
             } else {
                 return null;
             }
