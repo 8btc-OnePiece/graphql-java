@@ -25,6 +25,8 @@
 TracingSupport 中去掉list中的值的监控
 ### 14.0.OnePiece.10.0.7
 PageInfo接口增加cursorResetDuration字段
+### 14.0.OnePiece.10.0.8
+fix:add convert IntValue，可以这样定义默认值：`Int = 10000`
 
 ## todo
 * 将15.0的变更合入v14.0.Onepiece.10.0.x
