@@ -439,6 +439,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
                         if (!Objects.isNull(graphQLArg.getDefaultValue()) && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
                             try {
                                 java.lang.reflect.Field arguments = graphQLDirective.getClass().getDeclaredField("arguments");
+                                arguments.setAccessible(true);
                                 ((List<GraphQLArgument>) arguments.get(graphQLDirective)).add(graphQLArg);
                             } catch (NoSuchFieldException e) {
                                 throw new RuntimeException(e);
