@@ -8,10 +8,7 @@ import graphql.execution.ExecutionId;
 import graphql.execution.ExecutionStepInfo;
 import graphql.execution.MergedField;
 import graphql.execution.directives.QueryDirectives;
-import graphql.language.Document;
-import graphql.language.Field;
-import graphql.language.FragmentDefinition;
-import graphql.language.OperationDefinition;
+import graphql.language.*;
 import org.dataloader.DataLoader;
 import org.dataloader.DataLoaderRegistry;
 
@@ -440,6 +437,11 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
                             try {
                                 java.lang.reflect.Field arguments = graphQLDirective.getClass().getDeclaredField("arguments");
                                 arguments.setAccessible(true);
+
+                                java.lang.reflect.Field schemaArgumentValue = graphQLArg.getClass().getDeclaredField("value");
+                                schemaArgumentValue.setAccessible(true);
+                                schemaArgumentValue.set(graphQLArg, serialize(graphQLArg.getType(), graphQLArg.getDefaultValue()));
+
                                 ((List<GraphQLArgument>) arguments.get(graphQLDirective)).add(graphQLArg);
                             } catch (NoSuchFieldException e) {
                                 throw new RuntimeException(e);
@@ -450,5 +452,9 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
                     }
             );
         });
+    }
+
+    private static Object serialize(GraphQLType type, Object value) {
+        return type instanceof GraphQLScalarType ? ((GraphQLScalarType) type).getCoercing().serialize(value) : ((GraphQLEnumType) type).getCoercing().serialize(value);
     }
 }
