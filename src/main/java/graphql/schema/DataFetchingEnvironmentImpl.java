@@ -434,11 +434,20 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     private static void supplementDirectiveArgumentsFromSchema(List<GraphQLDirective> providedDirectives, GraphQLSchema graphQLSchema) {
         providedDirectives.stream().forEach(graphQLDirective -> {
             GraphQLDirective schemaDirective = graphQLSchema.getDirective(graphQLDirective.getName());
-            schemaDirective.getArguments().stream().forEach(graphQLArg -> {
-                if (!Objects.isNull(graphQLArg.getDefaultValue()) && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
-                    graphQLDirective.getArguments().add(graphQLArg);
-                }
-            });
+            schemaDirective.getArguments().stream().forEach(
+                    graphQLArg -> {
+                        if (!Objects.isNull(graphQLArg.getDefaultValue()) && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
+                            try {
+                                java.lang.reflect.Field arguments = graphQLDirective.getClass().getDeclaredField("arguments");
+                                ((List<GraphQLArgument>) arguments.get(graphQLDirective)).add(graphQLArg);
+                            } catch (NoSuchFieldException e) {
+                                throw new RuntimeException(e);
+                            } catch (IllegalAccessException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                    }
+            );
         });
     }
 }
