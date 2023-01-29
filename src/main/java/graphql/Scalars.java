@@ -222,6 +222,8 @@ public class Scalars {
                     return assertShouldNeverHappen();
                 }
                 return value.compareTo(BigDecimal.ZERO) != 0;
+            } else if (input instanceof BooleanValue) {
+                return ((BooleanValue) input).isValue();
             } else {
                 return null;
             }
