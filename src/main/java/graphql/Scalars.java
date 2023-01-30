@@ -132,6 +132,8 @@ public class Scalars {
                     return null;
                 }
                 return value.doubleValue();
+            } else if (input instanceof FloatValue) {
+                return ((FloatValue) input).getValue().doubleValue();
             } else {
                 return null;
             }
