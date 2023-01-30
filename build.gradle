@@ -230,7 +230,7 @@ uploadArchives {
         mavenDeployer {
             //nexus-server of OnePiece
             repository(url: "https://nexus.8btc-ops.com/repository/maven-releases/") {
-                authentication(userName: 'admin', password: 'admin8btc')
+                authentication(userName: 'xxx', password: 'xxx')
             }
             pom.version = project.version
             pom.artifactId = rootProject.name
