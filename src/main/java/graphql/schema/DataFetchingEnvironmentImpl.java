@@ -436,6 +436,10 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
             }
             schemaDirective.getArguments().stream().forEach(
                     graphQLArg -> {
+                        if (!(graphQLArg.getType() instanceof GraphQLScalarType) || !(graphQLArg.getType() instanceof GraphQLEnumType)) {
+                            return;
+                        }
+
                         if (!Objects.isNull(graphQLArg.getDefaultValue()) && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
                             try {
                                 java.lang.reflect.Field arguments = graphQLDirective.getClass().getDeclaredField("arguments");
@@ -443,10 +447,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
                                 java.lang.reflect.Field schemaArgumentValue = graphQLArg.getClass().getDeclaredField("value");
                                 schemaArgumentValue.setAccessible(true);
-
-                                if (!(graphQLArg.getType() instanceof GraphQLScalarType) || !(graphQLArg.getType() instanceof GraphQLEnumType)) {
-                                    return;
-                                }
 
                                 schemaArgumentValue.set(graphQLArg, serialize(graphQLArg.getType(), graphQLArg.getDefaultValue()));
 
