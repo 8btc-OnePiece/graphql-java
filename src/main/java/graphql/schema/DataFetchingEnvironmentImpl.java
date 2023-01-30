@@ -436,7 +436,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
             }
             schemaDirective.getArguments().stream().forEach(
                     graphQLArg -> {
-                        if (!(graphQLArg.getType() instanceof GraphQLScalarType) || !(graphQLArg.getType() instanceof GraphQLEnumType)) {
+                        if (!(graphQLArg.getType() instanceof GraphQLScalarType) && !(graphQLArg.getType() instanceof GraphQLEnumType)) {
                             return;
                         }
 
