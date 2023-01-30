@@ -431,6 +431,9 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     private static void supplementDirectiveArgumentsFromSchema(List<GraphQLDirective> providedDirectives, GraphQLSchema graphQLSchema) {
         providedDirectives.stream().forEach(graphQLDirective -> {
             GraphQLDirective schemaDirective = graphQLSchema.getDirective(graphQLDirective.getName());
+            if (Objects.isNull(schemaDirective)) {
+                return;
+            }
             schemaDirective.getArguments().stream().forEach(
                     graphQLArg -> {
                         if (!Objects.isNull(graphQLArg.getDefaultValue()) && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
