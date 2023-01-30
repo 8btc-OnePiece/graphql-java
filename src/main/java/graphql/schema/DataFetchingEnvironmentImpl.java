@@ -443,6 +443,11 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
                                 java.lang.reflect.Field schemaArgumentValue = graphQLArg.getClass().getDeclaredField("value");
                                 schemaArgumentValue.setAccessible(true);
+
+                                if (!(graphQLArg.getType() instanceof GraphQLScalarType) || !(graphQLArg.getType() instanceof GraphQLEnumType)) {
+                                    return;
+                                }
+
                                 schemaArgumentValue.set(graphQLArg, serialize(graphQLArg.getType(), graphQLArg.getDefaultValue()));
 
                                 ((List<GraphQLArgument>) arguments.get(graphQLDirective)).add(graphQLArg);
