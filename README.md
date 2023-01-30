@@ -26,12 +26,12 @@ TracingSupport 中去掉list中的值的监控
 ### 14.0.OnePiece.10.0.7
 PageInfo接口增加cursorResetDuration字段
 ### 14.0.OnePiece.10.0.8
-graphql directive 基本类型参数设置默认值及生效-目前只支持Int、Long、String、Float、BigDecimal、Boolean，如下：
+graphql directive “基本类型”参数设置默认值及生效-目前只支持Int、Long、String、Float、BigDecimal、Boolean，如下：
 ```
 directive @Size(min: Int = 1, max : Int = 5000, message : String = "graphql.validation.Size.message",inclusive : Boolean! = true,amount: Float = 1.0,long: Long = 1,bigDecimal: BigDecimal="1.0")
 on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
 ```
-- 设置基本类型默认值报错，如:Expected type 'Int' but was 'IntValue'，具体查看Scalars类
+- 设置“基本类型”默认值报错，如:Expected type 'Int' but was 'IntValue'，具体查看Scalars类
 - 默认值生效处理查看：DataFetchingEnvironmentImpl#filedSupplementDirectiveArguments
 
 ## todo
