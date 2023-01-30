@@ -350,6 +350,8 @@ public class Scalars {
                 } catch (ArithmeticException e) {
                     return null;
                 }
+            } else if (input instanceof IntValue) {
+                return ((IntValue) input).getValue().longValue();
             } else {
                 return null;
             }
@@ -618,6 +620,8 @@ public class Scalars {
                 } catch (NumberFormatException e) {
                     return null;
                 }
+            } else if (input instanceof FloatValue) {
+                return ((FloatValue) input).getValue();
             }
             return null;
 
