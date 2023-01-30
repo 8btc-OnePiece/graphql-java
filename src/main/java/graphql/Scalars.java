@@ -624,6 +624,8 @@ public class Scalars {
                 return ((FloatValue) input).getValue();
             } else if (input instanceof IntValue) {
                 return new BigDecimal(((IntValue) input).getValue().toString());
+            } else if (input instanceof StringValue) {
+                return new BigDecimal(((StringValue) input).getValue());
             }
             return null;
 
