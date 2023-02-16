@@ -33,7 +33,7 @@ def reactiveStreamsVersion = '1.0.2'
 def slf4jVersion = '1.7.25'
 def releaseVersion = System.env.RELEASE_VERSION
 //version = releaseVersion ? releaseVersion : getDevelopmentVersion()
-version = '14.0.OnePiece.10.0.7'
+version = '14.0.OnePiece.10.0.8'
 group = 'com.graphql-java'
 
 
