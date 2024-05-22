@@ -1,6 +1,7 @@
 package graphql.validation.rules;
 
 
+import graphql.Internal;
 import graphql.language.FragmentDefinition;
 import graphql.language.OperationDefinition;
 import graphql.language.VariableDefinition;
@@ -8,11 +9,13 @@ import graphql.language.VariableReference;
 import graphql.validation.AbstractRule;
 import graphql.validation.ValidationContext;
 import graphql.validation.ValidationErrorCollector;
-import graphql.validation.ValidationErrorType;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
 
+import static graphql.validation.ValidationErrorType.UndefinedVariable;
+
+@Internal
 public class NoUndefinedVariables extends AbstractRule {
 
     private final Set<String> variableNames = new LinkedHashSet<>();
@@ -35,8 +38,8 @@ public class NoUndefinedVariables extends AbstractRule {
     @Override
     public void checkVariable(VariableReference variableReference) {
         if (!variableNames.contains(variableReference.getName())) {
-            String message = String.format("Undefined variable %s", variableReference.getName());
-            addError(ValidationErrorType.UndefinedVariable, variableReference.getSourceLocation(), message);
+            String message = i18n(UndefinedVariable, "NoUndefinedVariables.undefinedVariable", variableReference.getName());
+            addError(UndefinedVariable, variableReference.getSourceLocation(), message);
         }
     }
 

@@ -1,20 +1,25 @@
 package graphql.execution;
 
+import com.google.common.collect.ImmutableList;
 import graphql.GraphQLError;
-import graphql.Internal;
+import graphql.PublicApi;
+import graphql.execution.instrumentation.parameters.InstrumentationFieldCompleteParameters;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-@Internal
+/**
+ * Note: This is returned by {@link InstrumentationFieldCompleteParameters#getFetchedValue()}
+ * and therefore part of the public despite never used in a method signature.
+ */
+@PublicApi
 public class FetchedValue {
     private final Object fetchedValue;
     private final Object rawFetchedValue;
     private final Object localContext;
-    private final List<GraphQLError> errors;
+    private final ImmutableList<GraphQLError> errors;
 
-    private FetchedValue(Object fetchedValue, Object rawFetchedValue, List<GraphQLError> errors, Object localContext) {
+    private FetchedValue(Object fetchedValue, Object rawFetchedValue, ImmutableList<GraphQLError> errors, Object localContext) {
         this.fetchedValue = fetchedValue;
         this.rawFetchedValue = rawFetchedValue;
         this.errors = errors;
@@ -33,7 +38,7 @@ public class FetchedValue {
     }
 
     public List<GraphQLError> getErrors() {
-        return new ArrayList<>(errors);
+        return errors;
     }
 
     public Object getLocalContext() {
@@ -74,7 +79,7 @@ public class FetchedValue {
         private Object fetchedValue;
         private Object rawFetchedValue;
         private Object localContext;
-        private List<GraphQLError> errors = new ArrayList<>();
+        private ImmutableList<GraphQLError> errors = ImmutableList.of();
 
         public Builder fetchedValue(Object fetchedValue) {
             this.fetchedValue = fetchedValue;
@@ -92,7 +97,7 @@ public class FetchedValue {
         }
 
         public Builder errors(List<GraphQLError> errors) {
-            this.errors = errors;
+            this.errors = ImmutableList.copyOf(errors);
             return this;
         }
 

@@ -5,14 +5,16 @@ import graphql.language.SourceLocation;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
-import static java.util.stream.Collectors.toList;
+import static graphql.collect.ImmutableKit.map;
 
 /**
  * This little helper allows GraphQlErrors to implement
  * common things (hashcode/ equals ) and to specification more easily
  */
 @SuppressWarnings("SimplifiableIfStatement")
+@Internal
 public class GraphqlErrorHelper {
 
     public static Map<String, Object> toSpecification(GraphQLError error) {
@@ -36,7 +38,7 @@ public class GraphqlErrorHelper {
             } else {
                 extensions = new LinkedHashMap<>();
             }
-            // put in the classification unless its already there
+            // put in the classification unless it's already there
             if (!extensions.containsKey("classification")) {
                 extensions.put("classification", errorClassification.toSpecification(error));
             }
@@ -49,7 +51,7 @@ public class GraphqlErrorHelper {
     }
 
     public static Object locations(List<SourceLocation> locations) {
-        return locations.stream().map(GraphqlErrorHelper::location).collect(toList());
+        return map(locations, GraphqlErrorHelper::location);
     }
 
     public static Object location(SourceLocation location) {
@@ -60,10 +62,11 @@ public class GraphqlErrorHelper {
     }
 
     public static int hashCode(GraphQLError dis) {
-        int result = dis.getMessage() != null ? dis.getMessage().hashCode() : 0;
-        result = 31 * result + (dis.getLocations() != null ? dis.getLocations().hashCode() : 0);
-        result = 31 * result + (dis.getPath() != null ? dis.getPath().hashCode() : 0);
-        result = 31 * result + dis.getErrorType().hashCode();
+        int result = 1;
+        result = 31 * result + Objects.hashCode(dis.getMessage());
+        result = 31 * result + Objects.hashCode(dis.getLocations());
+        result = 31 * result + Objects.hashCode(dis.getPath());
+        result = 31 * result + Objects.hashCode(dis.getErrorType());
         return result;
     }
 
@@ -75,12 +78,15 @@ public class GraphqlErrorHelper {
 
         GraphQLError dat = (GraphQLError) o;
 
-        if (dis.getMessage() != null ? !dis.getMessage().equals(dat.getMessage()) : dat.getMessage() != null)
+        if (!Objects.equals(dis.getMessage(), dat.getMessage())) {
             return false;
-        if (dis.getLocations() != null ? !dis.getLocations().equals(dat.getLocations()) : dat.getLocations() != null)
+        }
+        if (!Objects.equals(dis.getLocations(), dat.getLocations())) {
             return false;
-        if (dis.getPath() != null ? !dis.getPath().equals(dat.getPath()) : dat.getPath() != null)
+        }
+        if (!Objects.equals(dis.getPath(), dat.getPath())) {
             return false;
+        }
         return dis.getErrorType() == dat.getErrorType();
     }
 }

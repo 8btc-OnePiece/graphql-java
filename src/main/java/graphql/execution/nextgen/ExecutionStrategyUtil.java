@@ -15,13 +15,17 @@ import graphql.execution.nextgen.result.ExecutionResultNode;
 import graphql.execution.nextgen.result.ResolvedValue;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLOutputType;
-import graphql.util.FpKit;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import static graphql.collect.ImmutableKit.map;
 import static graphql.execution.FieldCollectorParameters.newParameters;
 
+/**
+ * @deprecated Jan 2022 - We have decided to deprecate the NextGen engine, and it will be removed in a future release.
+ */
+@Deprecated
 @Internal
 public class ExecutionStrategyUtil {
 
@@ -39,7 +43,7 @@ public class ExecutionStrategyUtil {
 
     private List<CompletableFuture<FetchedValueAnalysis>> fetchAndAnalyze(ExecutionContext context, FieldSubSelection fieldSubSelection) {
 
-        return FpKit.map(fieldSubSelection.getMergedSelectionSet().getSubFieldsList(),
+        return map(fieldSubSelection.getMergedSelectionSet().getSubFieldsList(),
                 mergedField -> fetchAndAnalyzeField(context, fieldSubSelection.getSource(), fieldSubSelection.getLocalContext(), mergedField, fieldSubSelection.getExecutionStepInfo()));
 
     }
@@ -58,7 +62,7 @@ public class ExecutionStrategyUtil {
     }
 
     public List<ExecutionResultNode> fetchedValueAnalysisToNodes(List<FetchedValueAnalysis> fetchedValueAnalysisList) {
-        return FpKit.map(fetchedValueAnalysisList, fetchedValueAnalysis -> resultNodesCreator.createResultNode(fetchedValueAnalysis));
+        return map(fetchedValueAnalysisList, fetchedValueAnalysis -> resultNodesCreator.createResultNode(fetchedValueAnalysis));
     }
 
 
@@ -73,7 +77,7 @@ public class ExecutionStrategyUtil {
         Object localContext = resolvedValue.getLocalContext();
 
         GraphQLOutputType sourceType = executionInfo.getUnwrappedNonNullType();
-        GraphQLObjectType resolvedObjectType = resolveType.resolveType(executionContext, field, source, executionInfo.getArguments(), sourceType);
+        GraphQLObjectType resolvedObjectType = resolveType.resolveType(executionContext, field, source, executionInfo, sourceType, localContext);
         FieldCollectorParameters collectorParameters = newParameters()
                 .schema(executionContext.getGraphQLSchema())
                 .objectType(resolvedObjectType)

@@ -1,8 +1,10 @@
 package graphql.language;
 
 
+import com.google.common.collect.ImmutableList;
 import graphql.Internal;
 import graphql.PublicApi;
+import graphql.collect.ImmutableKit;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
@@ -10,25 +12,29 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
+import static graphql.collect.ImmutableKit.emptyList;
+import static graphql.collect.ImmutableKit.emptyMap;
 import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
-import static java.util.Collections.emptyMap;
 
 @PublicApi
-public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinition> implements TypeDefinition<InterfaceTypeDefinition>, DirectivesContainer<InterfaceTypeDefinition>, NamedNode<InterfaceTypeDefinition> {
+public class InterfaceTypeDefinition extends AbstractDescribedNode<InterfaceTypeDefinition> implements ImplementingTypeDefinition<InterfaceTypeDefinition>, DirectivesContainer<InterfaceTypeDefinition>, NamedNode<InterfaceTypeDefinition>, SDLExtensionDefinition {
 
     private final String name;
-    private final Description description;
-    private final List<FieldDefinition> definitions;
-    private final List<Directive> directives;
+    private final ImmutableList<Type> implementz;
+    private final ImmutableList<FieldDefinition> definitions;
+    private final ImmutableList<Directive> directives;
 
+    public static final String CHILD_IMPLEMENTZ = "implementz";
     public static final String CHILD_DEFINITIONS = "definitions";
     public static final String CHILD_DIRECTIVES = "directives";
 
     @Internal
     protected InterfaceTypeDefinition(String name,
+                                      List<Type> implementz,
                                       List<FieldDefinition> definitions,
                                       List<Directive> directives,
                                       Description description,
@@ -36,11 +42,11 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
                                       List<Comment> comments,
                                       IgnoredChars ignoredChars,
                                       Map<String, String> additionalData) {
-        super(sourceLocation, comments, ignoredChars, additionalData);
+        super(sourceLocation, comments, ignoredChars, additionalData, description);
         this.name = name;
-        this.definitions = definitions;
-        this.directives = directives;
-        this.description = description;
+        this.implementz = ImmutableList.copyOf(implementz);
+        this.definitions = ImmutableList.copyOf(definitions);
+        this.directives = ImmutableList.copyOf(directives);
     }
 
     /**
@@ -49,16 +55,22 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
      * @param name of the interface
      */
     public InterfaceTypeDefinition(String name) {
-        this(name, new ArrayList<>(), new ArrayList<>(), null, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
+        this(name, emptyList(), emptyList(), emptyList(), null, null, emptyList(), IgnoredChars.EMPTY, emptyMap());
     }
 
+    @Override
+    public List<Type> getImplements() {
+        return implementz;
+    }
+
+    @Override
     public List<FieldDefinition> getFieldDefinitions() {
-        return new ArrayList<>(definitions);
+        return definitions;
     }
 
     @Override
     public List<Directive> getDirectives() {
-        return new ArrayList<>(directives);
+        return directives;
     }
 
     @Override
@@ -66,13 +78,10 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
         return name;
     }
 
-    public Description getDescription() {
-        return description;
-    }
-
     @Override
     public List<Node> getChildren() {
         List<Node> result = new ArrayList<>();
+        result.addAll(implementz);
         result.addAll(definitions);
         result.addAll(directives);
         return result;
@@ -81,6 +90,7 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
     @Override
     public NodeChildrenContainer getNamedChildren() {
         return newNodeChildrenContainer()
+                .children(CHILD_IMPLEMENTZ, implementz)
                 .children(CHILD_DEFINITIONS, definitions)
                 .children(CHILD_DIRECTIVES, directives)
                 .build();
@@ -89,6 +99,7 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
     @Override
     public InterfaceTypeDefinition withNewChildren(NodeChildrenContainer newChildren) {
         return transform(builder -> builder
+                .implementz(newChildren.getChildren(CHILD_IMPLEMENTZ))
                 .definitions(newChildren.getChildren(CHILD_DEFINITIONS))
                 .directives(newChildren.getChildren(CHILD_DIRECTIVES))
         );
@@ -105,12 +116,13 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
 
         InterfaceTypeDefinition that = (InterfaceTypeDefinition) o;
 
-        return NodeUtil.isEqualTo(this.name, that.name);
+        return Objects.equals(this.name, that.name);
     }
 
     @Override
     public InterfaceTypeDefinition deepCopy() {
         return new InterfaceTypeDefinition(name,
+                deepCopy(implementz),
                 deepCopy(definitions),
                 deepCopy(directives),
                 description,
@@ -124,6 +136,7 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
     public String toString() {
         return "InterfaceTypeDefinition{" +
                 "name='" + name + '\'' +
+                ", implements=" + implementz +
                 ", fieldDefinitions=" + definitions +
                 ", directives=" + directives +
                 '}';
@@ -145,13 +158,14 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
-        private List<Comment> comments = new ArrayList<>();
+        private ImmutableList<Comment> comments = emptyList();
         private String name;
         private Description description;
-        private List<FieldDefinition> definitions = new ArrayList<>();
-        private List<Directive> directives = new ArrayList<>();
+        private ImmutableList<Type> implementz = emptyList();
+        private ImmutableList<FieldDefinition> definitions = emptyList();
+        private ImmutableList<Directive> directives = emptyList();
         private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
         private Map<String, String> additionalData = new LinkedHashMap<>();
 
@@ -161,13 +175,14 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
 
         private Builder(InterfaceTypeDefinition existing) {
             this.sourceLocation = existing.getSourceLocation();
-            this.comments = existing.getComments();
+            this.comments = ImmutableList.copyOf(existing.getComments());
             this.name = existing.getName();
             this.description = existing.getDescription();
-            this.directives = existing.getDirectives();
-            this.definitions = existing.getFieldDefinitions();
+            this.directives = ImmutableList.copyOf(existing.getDirectives());
+            this.definitions = ImmutableList.copyOf(existing.getFieldDefinitions());
             this.ignoredChars = existing.getIgnoredChars();
             this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
+            this.implementz = ImmutableList.copyOf(existing.getImplements());
         }
 
 
@@ -177,7 +192,7 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
         }
 
         public Builder comments(List<Comment> comments) {
-            this.comments = comments;
+            this.comments = ImmutableList.copyOf(comments);
             return this;
         }
 
@@ -191,23 +206,35 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
             return this;
         }
 
+        public Builder implementz(List<Type> implementz) {
+            this.implementz = ImmutableList.copyOf(implementz);
+            return this;
+        }
+
+        public Builder implementz(Type implement) {
+            this.implementz = ImmutableKit.addToList(implementz, implement);
+            return this;
+        }
+
+
         public Builder definitions(List<FieldDefinition> definitions) {
-            this.definitions = definitions;
+            this.definitions = ImmutableList.copyOf(definitions);
             return this;
         }
 
         public Builder definition(FieldDefinition definition) {
-            this.definitions.add(definition);
+            this.definitions = ImmutableKit.addToList(definitions, definition);
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
-            this.directives = directives;
+            this.directives = ImmutableList.copyOf(directives);
             return this;
         }
 
         public Builder directive(Directive directive) {
-            this.directives.add(directive);
+            this.directives = ImmutableKit.addToList(directives, directive);
             return this;
         }
 
@@ -229,6 +256,7 @@ public class InterfaceTypeDefinition extends AbstractNode<InterfaceTypeDefinitio
 
         public InterfaceTypeDefinition build() {
             return new InterfaceTypeDefinition(name,
+                    implementz,
                     definitions,
                     directives,
                     description,

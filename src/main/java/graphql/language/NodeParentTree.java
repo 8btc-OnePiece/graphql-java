@@ -1,5 +1,6 @@
 package graphql.language;
 
+import com.google.common.collect.ImmutableList;
 import graphql.Internal;
 import graphql.PublicApi;
 
@@ -8,7 +9,6 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertTrue;
@@ -24,12 +24,12 @@ public class NodeParentTree<T extends Node> {
 
     private final T node;
     private final NodeParentTree<T> parent;
-    private final List<String> path;
+    private final ImmutableList<String> path;
 
     @Internal
     public NodeParentTree(Deque<T> nodeStack) {
-        assertNotNull(nodeStack, "You MUST have a non null stack of nodes");
-        assertTrue(!nodeStack.isEmpty(), "You MUST have a non empty stack of nodes");
+        assertNotNull(nodeStack, () -> "You MUST have a non null stack of nodes");
+        assertTrue(!nodeStack.isEmpty(), () -> "You MUST have a non empty stack of nodes");
 
         Deque<T> copy = new ArrayDeque<>(nodeStack);
         path = mkPath(copy);
@@ -41,11 +41,11 @@ public class NodeParentTree<T extends Node> {
         }
     }
 
-    private List<String> mkPath(Deque<T> copy) {
+    private ImmutableList<String> mkPath(Deque<T> copy) {
         return copy.stream()
                 .filter(node1 -> node1 instanceof NamedNode)
                 .map(node1 -> ((NamedNode) node1).getName())
-                .collect(Collectors.toList());
+                .collect(ImmutableList.toImmutableList());
     }
 
 

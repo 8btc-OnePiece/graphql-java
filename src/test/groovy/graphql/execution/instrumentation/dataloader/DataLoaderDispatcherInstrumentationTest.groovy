@@ -1,7 +1,6 @@
 package graphql.execution.instrumentation.dataloader
 
 import graphql.ExecutionInput
-
 import graphql.ExecutionResult
 import graphql.GraphQL
 import graphql.TestUtil
@@ -9,13 +8,11 @@ import graphql.execution.AsyncExecutionStrategy
 import graphql.execution.AsyncSerialExecutionStrategy
 import graphql.execution.ExecutionContext
 import graphql.execution.ExecutionStrategyParameters
-import graphql.execution.ExecutorServiceExecutionStrategy
-import graphql.execution.batched.BatchedExecutionStrategy
 import graphql.execution.instrumentation.ChainedInstrumentation
 import graphql.execution.instrumentation.Instrumentation
 import graphql.execution.instrumentation.SimpleInstrumentation
-import graphql.schema.DataFetcher
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionParameters
+import graphql.schema.DataFetcher
 import org.dataloader.BatchLoader
 import org.dataloader.DataLoader
 import org.dataloader.DataLoaderRegistry
@@ -24,7 +21,6 @@ import spock.lang.Unroll
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
-import java.util.concurrent.ForkJoinPool
 
 import static graphql.ExecutionInput.newExecutionInput
 import static graphql.StarWarsSchema.starWarsSchema
@@ -83,7 +79,7 @@ class DataLoaderDispatcherInstrumentationTest extends Specification {
         chainedInstrumentation.instrumentations.any { instr -> instr instanceof DataLoaderDispatcherInstrumentation }
     }
 
-    def "dispatch is never called if not data loader registry is set in"() {
+    def "dispatch is never called if data loader registry is not set"() {
         def dataLoaderRegistry = new DataLoaderRegistry() {
             @Override
             void dispatchAll() {
@@ -182,11 +178,9 @@ class DataLoaderDispatcherInstrumentationTest extends Specification {
         er.data == expectedQueryData
 
         where:
-        executionStrategyName              | executionStrategy                                               || _
-        "AsyncExecutionStrategy"           | new AsyncSerialExecutionStrategy()                              || _
-        "AsyncSerialExecutionStrategy"     | new AsyncSerialExecutionStrategy()                              || _
-        "BatchedExecutionStrategy"         | new BatchedExecutionStrategy()                                  || _
-        "ExecutorServiceExecutionStrategy" | new ExecutorServiceExecutionStrategy(ForkJoinPool.commonPool()) || _
+        executionStrategyName          | executionStrategy                  || _
+        "AsyncExecutionStrategy"       | new AsyncSerialExecutionStrategy() || _
+        "AsyncSerialExecutionStrategy" | new AsyncSerialExecutionStrategy() || _
     }
 
     def "basic batch loading is possible via instrumentation interception of Execution Strategies"() {
@@ -299,5 +293,31 @@ class DataLoaderDispatcherInstrumentationTest extends Specification {
         then:
         er.errors.isEmpty()
         er.data["field"] == "working as expected"
+    }
+
+    def "handles deep async queries when a data loader registry is present"() {
+        given:
+        def support = new DeepDataFetchers()
+        def dummyDataloaderRegistry = new DataLoaderRegistry()
+        def batchingInstrumentation = new DataLoaderDispatcherInstrumentation()
+        def graphql = GraphQL.newGraphQL(support.schema())
+                .instrumentation(batchingInstrumentation)
+                .build()
+        // FieldLevelTrackingApproach uses LevelMaps with a default size of 16.
+        // Use a value greater than 16 to ensure that the underlying LevelMaps are resized
+        // as expected
+        def depth = 50
+
+        when:
+        def asyncResult = graphql.executeAsync(
+                newExecutionInput()
+                        .query(support.buildQuery(depth))
+                        .dataLoaderRegistry(dummyDataloaderRegistry)
+        )
+        def er = asyncResult.join()
+
+        then:
+        er.errors.isEmpty()
+        er.data == support.buildResponse(depth)
     }
 }

@@ -1,48 +1,78 @@
 import java.text.SimpleDateFormat
 
 plugins {
-    id "com.jfrog.bintray" version "1.8.4"
-    id 'maven'
+    id 'java'
+    id 'java-library'
+    id 'maven-publish'
+    id 'antlr'
+    id 'signing'
+    id "com.github.johnrengelman.shadow" version "7.1.2"
+    id "biz.aQute.bnd.builder" version "6.1.0"
+    id "io.github.gradle-nexus.publish-plugin" version "1.1.0"
+    id "groovy"
+    id "me.champeau.jmh" version "0.6.6"
 }
 
-apply plugin: 'java'
-apply plugin: 'maven'
-apply plugin: 'maven-publish'
-apply plugin: 'antlr'
-apply plugin: 'osgi'
-
 def getDevelopmentVersion() {
-    def output = new StringBuilder()
-    def error = new StringBuilder()
+    def gitCheckOutput = new StringBuilder()
+    def gitCheckError = new StringBuilder()
+    def gitCheck = ["git", "rev-parse", "--is-inside-work-tree"].execute()
+    gitCheck.waitForProcessOutput(gitCheckOutput, gitCheckError)
+    def isGit = gitCheckOutput.toString().trim()
+    if (isGit != "true") {
+        def version = "0.0.0-" + new SimpleDateFormat('yyyy-MM-dd\'T\'HH-mm-ss').format(new Date()) + "-no-git"
+        println "created development version: $version"
+        return version
+    }
+
+    def gitHashOutput = new StringBuilder()
+    def gitHashError = new StringBuilder()
     def gitShortHash = ["git", "-C", projectDir.toString(), "rev-parse", "--short", "HEAD"].execute()
-    gitShortHash.waitForProcessOutput(output, error)
-    def gitHash = output.toString().trim()
+    gitShortHash.waitForProcessOutput(gitHashOutput, gitHashError)
+    def gitHash = gitHashOutput.toString().trim()
     if (gitHash.isEmpty()) {
         println "git hash is empty: error: ${error.toString()}"
         throw new IllegalStateException("git hash could not be determined")
     }
-    def version = new SimpleDateFormat('yyyy-MM-dd\'T\'HH-mm-ss').format(new Date()) + "-" + gitHash
+    def version = "0.0.0-" + new SimpleDateFormat('yyyy-MM-dd\'T\'HH-mm-ss').format(new Date()) + "-" + gitHash
     println "created development version: $version"
     version
+}
+
+if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
+    def msg = String.format("This build must be run with java 1.8 - you are running %s - gradle finds the JDK via JAVA_HOME=%s",
+            JavaVersion.current(), System.getenv("JAVA_HOME"))
+    throw new GradleException(msg)
 }
 
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
-def reactiveStreamsVersion = '1.0.2'
-def slf4jVersion = '1.7.25'
+def reactiveStreamsVersion = '1.0.3'
+def slf4jVersion = '1.7.35'
 def releaseVersion = System.env.RELEASE_VERSION
+def antlrVersion = '4.9.3' // https://mvnrepository.com/artifact/org.antlr/antlr4-runtime
 //version = releaseVersion ? releaseVersion : getDevelopmentVersion()
-version = '14.0.OnePiece.10.0.8'
+version = '19.3.OnePiece.10.0.8'
 group = 'com.graphql-java'
 
+gradle.buildFinished { buildResult ->
+    println "*******************************"
+    println "*"
+    if (buildResult.failure != null) {
+        println "* FAILURE - ${buildResult.failure}"
+    } else {
+        println "* SUCCESS"
+    }
+    println "* Version: $version"
+    println "*"
+    println "*******************************"
+}
 
 repositories {
     mavenCentral()
     mavenLocal()
 }
-
-apply plugin: 'groovy'
 
 jar {
     from "LICENSE.md"
@@ -50,34 +80,101 @@ jar {
     from "src/main/antlr/GraphqlOperation.g4"
     from "src/main/antlr/GraphqlSDL.g4"
     from "src/main/antlr/GraphqlCommon.g4"
+    manifest {
+        attributes('Automatic-Module-Name': 'com.graphqljava')
+    }
 }
 
 dependencies {
-    compile 'org.antlr:antlr4-runtime:4.7.2'
-    compile 'org.slf4j:slf4j-api:' + slf4jVersion
-    compile 'com.graphql-java:java-dataloader:2.2.3'
-    compile 'org.reactivestreams:reactive-streams:' + reactiveStreamsVersion
-    antlr "org.antlr:antlr4:4.7.2"
-    testCompile group: 'junit', name: 'junit', version: '4.12'
-    testCompile 'org.spockframework:spock-core:1.1-groovy-2.4'
-    testCompile 'org.codehaus.groovy:groovy-all:2.4.13'
-    testCompile 'cglib:cglib-nodep:3.3.0'
-    testCompile 'org.objenesis:objenesis:2.1'
-    testCompile 'com.google.code.gson:gson:2.8.0'
-    testCompile 'org.eclipse.jetty:jetty-server:9.4.5.v20170502'
-    testCompile 'com.fasterxml.jackson.core:jackson-databind:2.10.0'
-    testCompile 'org.slf4j:slf4j-simple:' + slf4jVersion
-    testCompile 'org.awaitility:awaitility-groovy:3.0.0'
-    testCompile 'com.github.javafaker:javafaker:0.13'
+    compileOnly 'org.jetbrains:annotations:23.0.0'
+    implementation 'org.antlr:antlr4-runtime:' + antlrVersion
+    implementation 'org.slf4j:slf4j-api:' + slf4jVersion
+    api 'com.graphql-java:java-dataloader:3.2.0'
+    api 'org.reactivestreams:reactive-streams:' + reactiveStreamsVersion
+    antlr 'org.antlr:antlr4:' + antlrVersion
+    implementation 'com.google.guava:guava:31.0.1-jre'
+    testImplementation group: 'junit', name: 'junit', version: '4.13.2'
+    testImplementation 'org.spockframework:spock-core:2.0-groovy-3.0'
+    testImplementation 'org.codehaus.groovy:groovy:3.0.9'
+    testImplementation 'cglib:cglib-nodep:3.3.0'
+    testImplementation 'org.objenesis:objenesis:3.2'
+    testImplementation 'com.google.code.gson:gson:2.8.9'
+    testImplementation 'org.eclipse.jetty:jetty-server:9.4.26.v20200117'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.13.1'
+    testImplementation 'org.slf4j:slf4j-simple:' + slf4jVersion
+    testImplementation 'org.awaitility:awaitility-groovy:3.1.6'
+    testImplementation 'com.github.javafaker:javafaker:0.13'
 
-    testCompile 'org.reactivestreams:reactive-streams-tck:' + reactiveStreamsVersion
-    testCompile "io.reactivex.rxjava2:rxjava:2.1.5"
+    testImplementation 'org.reactivestreams:reactive-streams-tck:' + reactiveStreamsVersion
+    testImplementation "io.reactivex.rxjava2:rxjava:2.2.21"
 
-    testCompile 'org.testng:testng:6.1.1' // use for reactive streams test inheritance
+    testImplementation 'org.testng:testng:6.1.1' // use for reactive streams test inheritance
 
-    testCompile 'org.openjdk.jmh:jmh-core:1.21'
-    testCompile 'org.openjdk.jmh:jmh-generator-annprocess:1.21'
+    testImplementation 'org.openjdk.jmh:jmh-core:1.35'
+    testAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.35'
+    jmh 'org.openjdk.jmh:jmh-core:1.35'
+    jmh 'org.openjdk.jmh:jmh-generator-annprocess:1.35'
 }
+
+shadowJar {
+    minimize()
+    archiveClassifier.set('')
+    configurations = [project.configurations.compileClasspath]
+    relocate('com.google.common', 'graphql.com.google.common') {
+        include 'com.google.common.collect.*'
+        include 'com.google.common.base.*'
+        include 'com.google.common.math.*'
+        include 'com.google.common.primitives.*'
+    }
+    relocate('org.antlr.v4.runtime', 'graphql.org.antlr.v4.runtime')
+    dependencies {
+        include(dependency('com.google.guava:guava:31.0.1-jre'))
+        include(dependency('org.antlr:antlr4-runtime:' + antlrVersion))
+    }
+    from "LICENSE.md"
+    from "src/main/antlr/Graphql.g4"
+    from "src/main/antlr/GraphqlOperation.g4"
+    from "src/main/antlr/GraphqlSDL.g4"
+    from "src/main/antlr/GraphqlCommon.g4"
+    manifest {
+        attributes('Automatic-Module-Name': 'com.graphqljava')
+    }
+    //Apply biz.aQute.bnd.builder plugin logic to shadowJar as in BndBuilderPlugin
+    convention.plugins.bundle = new aQute.bnd.gradle.BundleTaskConvention(it)
+    doLast {
+        //Call bnd after the ShadowJar was built to update the MANIFEST.MF
+        buildBundle()
+    }
+
+    //Configure bnd for shadowJar
+    // -exportcontents: graphql.*  Adds all packages of graphql and below to the exported packages list
+    // -removeheaders:  Private-Package Removes the MANIFEST.MF header Private-Package, which contains all the internal packages and
+    //                                  also the repackaged packages like guava, which would be wrong after repackaging.
+    // Import-Package:  Changes the imported packages header, to exclude guava and dependencies from the import list (! excludes packages)
+    //                  Guava was repackaged and included inside the jar, so we need remove it.
+    //                  The last ,* copies all the existing imports from the other dependencies, which is required.
+    bnd('''
+-exportcontents: graphql.*
+-removeheaders: Private-Package
+Import-Package: !com.google.*,!org.checkerframework.*,!javax.annotation.*,!graphql.com.google.*,!org.antlr.*,!graphql.org.antlr.*,*
+''')
+}
+
+
+task removeNotNeededGuava(type: Zip) {
+    from({ zipTree({ "build/libs/graphql-java-${project.version}.jar" }) }) {
+        exclude('/com/**')
+    }
+    archiveFileName = "graphql-java-tmp.jar"
+    destinationDirectory = file("${project.buildDir}/libs")
+    doLast {
+        delete("build/libs/graphql-java-${project.version}.jar")
+        file("build/libs/graphql-java-tmp.jar").renameTo(file("build/libs/graphql-java-${project.version}.jar"))
+    }
+}
+
+
+shadowJar.finalizedBy removeNotNeededGuava
 
 
 task testng(type: Test) {
@@ -85,7 +182,10 @@ task testng(type: Test) {
 }
 check.dependsOn testng
 
-compileJava.source file("build/generated-src"), sourceSets.main.java
+compileJava {
+    options.compilerArgs += ["-parameters"]
+    source file("build/generated-src"), sourceSets.main.java
+}
 
 generateGrammarSource {
     includes = ['Graphql.g4']
@@ -94,6 +194,7 @@ generateGrammarSource {
     outputDirectory = file("${project.buildDir}/generated-src/antlr/main/graphql/parser/antlr")
 }
 generateGrammarSource.inputs.dir('src/main/antlr')
+
 
 task sourcesJar(type: Jar) {
     dependsOn classes
@@ -117,7 +218,8 @@ artifacts {
 
 test {
     testLogging {
-        exceptionFormat = 'full'
+        events "FAILED", "SKIPPED"
+        exceptionFormat = "FULL"
     }
 }
 
@@ -125,8 +227,6 @@ allprojects {
     tasks.withType(Javadoc) {
         exclude('**/antlr/**')
     }
-
-
 }
 
 publishing {
@@ -182,46 +282,35 @@ publishing {
     }
 }
 
-
-bintray {
-    user = System.env.BINTRAY_USER ?: project["bintray.user"]
-    key = System.env.BINTRAY_API_KEY ?: project["bintray.key"]
-    publications = ['graphqlJava']
-    publish = true
-    pkg {
-        repo = 'graphql-java'
-        name = 'graphql-java'
-        desc = 'GraphQL in Java'
-        licenses = ['MIT']
-        vcsUrl = 'https://github.com/graphql-java/graphql-java'
-
-        version {
-            name = project.version
-            desc = project.description
-            released = new Date()
-            vcsTag = 'v' + project.version
-            gpg {
-                sign = true
-            }
-            mavenCentralSync {
-                sync = true
-                user = System.env.MAVEN_CENTRAL_USER
-                password = System.env.MAVEN_CENTRAL_PASSWORD
-                close = '1'
-            }
+nexusPublishing {
+    repositories {
+        sonatype {
+            username = System.env.MAVEN_CENTRAL_USER
+            password = System.env.MAVEN_CENTRAL_PASSWORD
         }
     }
 }
+
+// to publish to local maven repo skip signing: ./gradlew publishToMavenLocal  -x signGraphqlJavaPublication
+signing {
+    def signingKey = System.env.MAVEN_CENTRAL_PGP_KEY
+    useInMemoryPgpKeys(signingKey, "")
+    sign publishing.publications
+}
+
 
 // all publish tasks depend on the build task
 tasks.withType(PublishToMavenRepository) {
     dependsOn build
 }
 
+// Only publish Maven POM, disable default Gradle modules file
+tasks.withType(GenerateModuleMetadata) {
+    enabled = false
+}
 
-task wrapper(type: Wrapper) {
-    gradleVersion = '4.10.2'
-    distributionUrl = "https://services.gradle.org/distributions/gradle-${gradleVersion}-all.zip"
+test {
+    useJUnitPlatform()
 }
 
 

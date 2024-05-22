@@ -3,6 +3,7 @@ package graphql.execution.instrumentation.tracing;
 import graphql.ExecutionResult;
 import graphql.ExecutionResultImpl;
 import graphql.PublicApi;
+import graphql.collect.ImmutableKit;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationContext;
 import graphql.execution.instrumentation.InstrumentationState;
@@ -77,11 +78,10 @@ public class TracingInstrumentation extends SimpleInstrumentation {
         Map<Object, Object> currentExt = executionResult.getExtensions();
 
         TracingSupport tracingSupport = parameters.getInstrumentationState();
-        Map<Object, Object> tracingMap = new LinkedHashMap<>();
-        tracingMap.putAll(currentExt == null ? Collections.emptyMap() : currentExt);
-        tracingMap.put("tracing", tracingSupport.snapshotTracingData());
+        Map<Object, Object> withTracingExt = new LinkedHashMap<>(currentExt == null ? ImmutableKit.emptyMap() : currentExt);
+        withTracingExt.put("tracing", tracingSupport.snapshotTracingData());
 
-        return CompletableFuture.completedFuture(new ExecutionResultImpl(executionResult.getData(), executionResult.getErrors(), tracingMap));
+        return CompletableFuture.completedFuture(new ExecutionResultImpl(executionResult.getData(), executionResult.getErrors(), withTracingExt));
     }
 
     @Override

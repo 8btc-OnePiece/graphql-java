@@ -8,16 +8,14 @@ import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLList;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLOutputType;
+import graphql.util.FpKit;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 @Internal
 public class ExecutionStepInfoFactory {
-
-
-    ValuesResolver valuesResolver = new ValuesResolver();
-
 
     public ExecutionStepInfo newExecutionStepInfoForSubField(ExecutionContext executionContext, MergedField mergedField, ExecutionStepInfo parentInfo) {
         GraphQLObjectType parentType = (GraphQLObjectType) parentInfo.getUnwrappedNonNullType();
@@ -25,9 +23,9 @@ public class ExecutionStepInfoFactory {
         GraphQLOutputType fieldType = fieldDefinition.getType();
         List<Argument> fieldArgs = mergedField.getArguments();
         GraphQLCodeRegistry codeRegistry = executionContext.getGraphQLSchema().getCodeRegistry();
-        Map<String, Object> argumentValues = valuesResolver.getArgumentValues(codeRegistry, fieldDefinition.getArguments(), fieldArgs, executionContext.getVariables());
+        Supplier<Map<String, Object>> argumentValues = FpKit.intraThreadMemoize(() -> ValuesResolver.getArgumentValues(codeRegistry, fieldDefinition.getArguments(), fieldArgs, executionContext.getCoercedVariables()));
 
-        ExecutionPath newPath = parentInfo.getPath().segment(mergedField.getResultKey());
+        ResultPath newPath = parentInfo.getPath().segment(mergedField.getResultKey());
 
         return parentInfo.transform(builder -> builder
                 .parentInfo(parentInfo)
@@ -42,7 +40,7 @@ public class ExecutionStepInfoFactory {
     public ExecutionStepInfo newExecutionStepInfoForListElement(ExecutionStepInfo executionInfo, int index) {
         GraphQLList fieldType = (GraphQLList) executionInfo.getUnwrappedNonNullType();
         GraphQLOutputType typeInList = (GraphQLOutputType) fieldType.getWrappedType();
-        ExecutionPath indexedPath = executionInfo.getPath().segment(index);
+        ResultPath indexedPath = executionInfo.getPath().segment(index);
         return executionInfo.transform(builder -> builder
                 .parentInfo(executionInfo)
                 .type(typeInList)

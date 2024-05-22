@@ -1,5 +1,7 @@
 package graphql.execution.nextgen;
 
+import com.google.common.collect.ImmutableList;
+import graphql.ExecutionResult;
 import graphql.Internal;
 import graphql.execution.Async;
 import graphql.execution.ExecutionContext;
@@ -24,13 +26,17 @@ import java.util.concurrent.CompletableFuture;
 
 import static graphql.Assert.assertNotEmpty;
 import static graphql.Assert.assertTrue;
+import static graphql.collect.ImmutableKit.map;
 import static graphql.execution.nextgen.result.ResultNodeAdapter.RESULT_NODE_ADAPTER;
 import static graphql.util.FpKit.flatList;
-import static graphql.util.FpKit.map;
 import static graphql.util.FpKit.mapEntries;
 import static graphql.util.FpKit.transposeMatrix;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
+/**
+ * @deprecated Jan 2022 - We have decided to deprecate the NextGen engine, and it will be removed in a future release.
+ */
+@Deprecated
 @Internal
 public class BatchedExecutionStrategy implements ExecutionStrategy {
 
@@ -39,17 +45,25 @@ public class BatchedExecutionStrategy implements ExecutionStrategy {
 
     FetchedValueAnalyzer fetchedValueAnalyzer = new FetchedValueAnalyzer();
     ExecutionStrategyUtil util = new ExecutionStrategyUtil();
+    ExecutionHelper executionHelper = new ExecutionHelper();
 
 
     @Override
-    public CompletableFuture<RootExecutionResultNode> execute(ExecutionContext executionContext, FieldSubSelection fieldSubSelection) {
+    public CompletableFuture<ExecutionResult> execute(ExecutionContext context) {
+        FieldSubSelection fieldSubSelection = executionHelper.getFieldSubSelection(context);
+        return executeImpl(context, fieldSubSelection)
+                .thenApply(ResultNodesUtil::toExecutionResult);
+    }
+
+
+    public CompletableFuture<RootExecutionResultNode> executeImpl(ExecutionContext executionContext, FieldSubSelection fieldSubSelection) {
         CompletableFuture<RootExecutionResultNode> rootCF = Async.each(util.fetchSubSelection(executionContext, fieldSubSelection))
                 .thenApply(RootExecutionResultNode::new);
 
         return rootCF.thenCompose(rootNode -> {
-            NodeMultiZipper<ExecutionResultNode> unresolvedNodes = ResultNodesUtil.getUnresolvedNodes(rootNode);
-            return nextStep(executionContext, unresolvedNodes);
-        })
+                    NodeMultiZipper<ExecutionResultNode> unresolvedNodes = ResultNodesUtil.getUnresolvedNodes(rootNode);
+                    return nextStep(executionContext, unresolvedNodes);
+                })
                 .thenApply(multiZipper -> multiZipper.toRootNode())
                 .thenApply(RootExecutionResultNode.class::cast);
     }
@@ -66,7 +80,7 @@ public class BatchedExecutionStrategy implements ExecutionStrategy {
 
     // all multizipper have the same root
     private CompletableFuture<NodeMultiZipper<ExecutionResultNode>> resolveNodes(ExecutionContext executionContext, List<NodeMultiZipper<ExecutionResultNode>> unresolvedNodes) {
-        assertNotEmpty(unresolvedNodes, "unresolvedNodes can't be empty");
+        assertNotEmpty(unresolvedNodes, () -> "unresolvedNodes can't be empty");
         ExecutionResultNode commonRoot = unresolvedNodes.get(0).getCommonRoot();
         CompletableFuture<List<List<NodeZipper<ExecutionResultNode>>>> listListCF = Async.flatMap(unresolvedNodes,
                 executionResultMultiZipper -> fetchAndAnalyze(executionContext, executionResultMultiZipper.getZippers()));
@@ -75,13 +89,13 @@ public class BatchedExecutionStrategy implements ExecutionStrategy {
     }
 
     private List<NodeMultiZipper<ExecutionResultNode>> groupNodesIntoBatches(NodeMultiZipper<ExecutionResultNode> unresolvedZipper) {
-        Map<MergedField, List<NodeZipper<ExecutionResultNode>>> zipperBySubSelection = FpKit.groupingBy(unresolvedZipper.getZippers(),
+        Map<MergedField, ImmutableList<NodeZipper<ExecutionResultNode>>> zipperBySubSelection = FpKit.groupingBy(unresolvedZipper.getZippers(),
                 (executionResultZipper -> executionResultZipper.getCurNode().getMergedField()));
         return mapEntries(zipperBySubSelection, (key, value) -> new NodeMultiZipper<ExecutionResultNode>(unresolvedZipper.getCommonRoot(), value, RESULT_NODE_ADAPTER));
     }
 
     private CompletableFuture<List<NodeZipper<ExecutionResultNode>>> fetchAndAnalyze(ExecutionContext executionContext, List<NodeZipper<ExecutionResultNode>> unresolvedNodes) {
-        assertTrue(unresolvedNodes.size() > 0, "unresolvedNodes can't be empty");
+        assertTrue(unresolvedNodes.size() > 0, () -> "unresolvedNodes can't be empty");
 
         List<FieldSubSelection> fieldSubSelections = map(unresolvedNodes,
                 node -> util.createFieldSubSelection(executionContext, node.getCurNode().getExecutionStepInfo(), node.getCurNode().getResolvedValue()));

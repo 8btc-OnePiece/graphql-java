@@ -1,8 +1,10 @@
 package graphql.language;
 
 
+import com.google.common.collect.ImmutableList;
 import graphql.Internal;
 import graphql.PublicApi;
+import graphql.collect.ImmutableKit;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
@@ -10,19 +12,20 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
+import static graphql.collect.ImmutableKit.emptyList;
+import static graphql.collect.ImmutableKit.emptyMap;
 import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
-import static java.util.Collections.emptyMap;
 
 @PublicApi
-public class InputValueDefinition extends AbstractNode<InputValueDefinition> implements DirectivesContainer<InputValueDefinition>, NamedNode<InputValueDefinition> {
+public class InputValueDefinition extends AbstractDescribedNode<InputValueDefinition> implements DirectivesContainer<InputValueDefinition>, NamedNode<InputValueDefinition> {
     private final String name;
     private final Type type;
     private final Value defaultValue;
-    private final Description description;
-    private final List<Directive> directives;
+    private final ImmutableList<Directive> directives;
 
     public static final String CHILD_TYPE = "type";
     public static final String CHILD_DEFAULT_VALUE = "defaultValue";
@@ -38,13 +41,11 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
                                    List<Comment> comments,
                                    IgnoredChars ignoredChars,
                                    Map<String, String> additionalData) {
-        super(sourceLocation, comments, ignoredChars, additionalData);
+        super(sourceLocation, comments, ignoredChars, additionalData, description);
         this.name = name;
         this.type = type;
         this.defaultValue = defaultValue;
-        this.directives = directives;
-        this.description = description;
-
+        this.directives = ImmutableList.copyOf(directives);
     }
 
     /**
@@ -55,7 +56,7 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
      */
     public InputValueDefinition(String name,
                                 Type type) {
-        this(name, type, null, new ArrayList<>(), null, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
+        this(name, type, null, emptyList(), null, null, emptyList(), IgnoredChars.EMPTY, emptyMap());
 
     }
 
@@ -70,7 +71,7 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
     public InputValueDefinition(String name,
                                 Type type,
                                 Value defaultValue) {
-        this(name, type, defaultValue, new ArrayList<>(), null, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
+        this(name, type, defaultValue, emptyList(), null, null, emptyList(), IgnoredChars.EMPTY, emptyMap());
 
     }
 
@@ -83,16 +84,12 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
         return name;
     }
 
-    public Description getDescription() {
-        return description;
-    }
-
     public Value getDefaultValue() {
         return defaultValue;
     }
 
     public List<Directive> getDirectives() {
-        return new ArrayList<>(directives);
+        return directives;
     }
 
     @Override
@@ -136,7 +133,7 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
 
         InputValueDefinition that = (InputValueDefinition) o;
 
-        return NodeUtil.isEqualTo(this.name, that.name);
+        return Objects.equals(this.name, that.name);
     }
 
     @Override
@@ -177,14 +174,14 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
-        private List<Comment> comments = new ArrayList<>();
+        private ImmutableList<Comment> comments = emptyList();
         private String name;
         private Type type;
         private Value defaultValue;
         private Description description;
-        private List<Directive> directives = new ArrayList<>();
+        private ImmutableList<Directive> directives = emptyList();
         private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
         private Map<String, String> additionalData = new LinkedHashMap<>();
 
@@ -193,12 +190,12 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
 
         private Builder(InputValueDefinition existing) {
             this.sourceLocation = existing.getSourceLocation();
-            this.comments = existing.getComments();
+            this.comments = ImmutableList.copyOf(existing.getComments());
             this.name = existing.getName();
             this.type = existing.getType();
             this.defaultValue = existing.getDefaultValue();
             this.description = existing.getDescription();
-            this.directives = existing.getDirectives();
+            this.directives = ImmutableList.copyOf(existing.getDirectives());
             this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
@@ -209,7 +206,7 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
         }
 
         public Builder comments(List<Comment> comments) {
-            this.comments = comments;
+            this.comments = ImmutableList.copyOf(comments);
             return this;
         }
 
@@ -233,13 +230,14 @@ public class InputValueDefinition extends AbstractNode<InputValueDefinition> imp
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
-            this.directives = directives;
+            this.directives = ImmutableList.copyOf(directives);
             return this;
         }
 
         public Builder directive(Directive directive) {
-            this.directives.add(directive);
+            this.directives = ImmutableKit.addToList(directives, directive);
             return this;
         }
 

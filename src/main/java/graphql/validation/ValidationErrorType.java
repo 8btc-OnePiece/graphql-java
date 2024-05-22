@@ -1,13 +1,17 @@
 package graphql.validation;
 
 
-public enum ValidationErrorType {
+import graphql.PublicApi;
 
+@PublicApi
+public enum ValidationErrorType implements ValidationErrorClassification {
+
+    MaxValidationErrorsReached,
     DefaultForNonNullArgument,
     WrongType,
     UnknownType,
-    SubSelectionRequired,
-    SubSelectionNotAllowed,
+    SubselectionRequired,
+    SubselectionNotAllowed,
     InvalidSyntax,
     BadValueForDefaultArg,
     FieldUndefined,
@@ -32,7 +36,9 @@ public enum ValidationErrorType {
     DuplicateOperationName,
     DuplicateFragmentName,
     DuplicateDirectiveName,
-    DeferDirectiveOnNonNullField,
-    DeferDirectiveNotOnQueryOperation,
-    DeferMustBeOnAllFields
+    DuplicateArgumentNames,
+    DuplicateVariableName,
+    NullValueForNonNullArgument,
+    SubscriptionMultipleRootFields,
+    SubscriptionIntrospectionRootField
 }

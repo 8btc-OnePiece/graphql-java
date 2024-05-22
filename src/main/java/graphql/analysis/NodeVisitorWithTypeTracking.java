@@ -1,6 +1,7 @@
 package graphql.analysis;
 
 import graphql.Internal;
+import graphql.execution.CoercedVariables;
 import graphql.execution.ConditionalNodes;
 import graphql.execution.ValuesResolver;
 import graphql.introspection.Introspection;
@@ -15,6 +16,7 @@ import graphql.language.NodeVisitorStub;
 import graphql.language.ObjectField;
 import graphql.language.TypeName;
 import graphql.language.Value;
+import graphql.language.VariableDefinition;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLCompositeType;
@@ -32,6 +34,7 @@ import java.util.Map;
 import static graphql.Assert.assertNotNull;
 import static graphql.schema.GraphQLTypeUtil.unwrapAll;
 import static graphql.util.TraverserContext.Phase.LEAVE;
+import static java.lang.String.format;
 
 /**
  * Internally used node visitor which delegates to a {@link QueryVisitor} with type
@@ -40,16 +43,12 @@ import static graphql.util.TraverserContext.Phase.LEAVE;
 @Internal
 public class NodeVisitorWithTypeTracking extends NodeVisitorStub {
 
-
     private final QueryVisitor preOrderCallback;
     private final QueryVisitor postOrderCallback;
     private final Map<String, Object> variables;
     private final GraphQLSchema schema;
     private final Map<String, FragmentDefinition> fragmentsByName;
-
     private final ConditionalNodes conditionalNodes = new ConditionalNodes();
-    private final ValuesResolver valuesResolver = new ValuesResolver();
-
 
     public NodeVisitorWithTypeTracking(QueryVisitor preOrderCallback, QueryVisitor postOrderCallback, Map<String, Object> variables, GraphQLSchema schema, Map<String, FragmentDefinition> fragmentsByName) {
         this.preOrderCallback = preOrderCallback;
@@ -137,8 +136,9 @@ public class NodeVisitorWithTypeTracking extends NodeVisitorStub {
         QueryTraversalContext parentEnv = context.getVarFromParents(QueryTraversalContext.class);
 
         GraphQLCompositeType typeCondition = (GraphQLCompositeType) schema.getType(fragmentDefinition.getTypeCondition().getName());
-        assertNotNull(typeCondition, "Invalid type condition '%s' in fragment '%s'", fragmentDefinition.getTypeCondition().getName(),
-                fragmentDefinition.getName());
+        assertNotNull(typeCondition,
+                () -> format("Invalid type condition '%s' in fragment '%s'", fragmentDefinition.getTypeCondition().getName(),
+                        fragmentDefinition.getName()));
         context.setVar(QueryTraversalContext.class, new QueryTraversalContext(typeCondition, parentEnv.getEnvironment(), fragmentDefinition));
         return TraversalControl.CONTINUE;
     }
@@ -148,10 +148,10 @@ public class NodeVisitorWithTypeTracking extends NodeVisitorStub {
         QueryTraversalContext parentEnv = context.getVarFromParents(QueryTraversalContext.class);
 
         GraphQLFieldDefinition fieldDefinition = Introspection.getFieldDef(schema, (GraphQLCompositeType) unwrapAll(parentEnv.getOutputType()), field.getName());
-        boolean isTypeNameIntrospectionField = fieldDefinition == Introspection.TypeNameMetaFieldDef;
+        boolean isTypeNameIntrospectionField = fieldDefinition == schema.getIntrospectionTypenameFieldDefinition();
         GraphQLFieldsContainer fieldsContainer = !isTypeNameIntrospectionField ? (GraphQLFieldsContainer) unwrapAll(parentEnv.getOutputType()) : null;
         GraphQLCodeRegistry codeRegistry = schema.getCodeRegistry();
-        Map<String, Object> argumentValues = valuesResolver.getArgumentValues(codeRegistry, fieldDefinition.getArguments(), field.getArguments(), variables);
+        Map<String, Object> argumentValues = ValuesResolver.getArgumentValues(codeRegistry, fieldDefinition.getArguments(), field.getArguments(), CoercedVariables.of(variables));
         QueryVisitorFieldEnvironment environment = new QueryVisitorFieldEnvironmentImpl(isTypeNameIntrospectionField,
                 field,
                 fieldDefinition,
@@ -232,6 +232,11 @@ public class NodeVisitorWithTypeTracking extends NodeVisitorStub {
 
     @Override
     protected TraversalControl visitValue(Value<?> value, TraverserContext<Node> context) {
+        if (context.getParentNode() instanceof VariableDefinition) {
+            visitVariableDefinition(((VariableDefinition) context.getParentNode()), context);
+            return TraversalControl.ABORT;
+        }
+
         QueryVisitorFieldArgumentEnvironment fieldArgEnv = context.getVarFromParents(QueryVisitorFieldArgumentEnvironment.class);
         QueryVisitorFieldArgumentInputValueImpl inputValue = context.getVarFromParents(QueryVisitorFieldArgumentInputValue.class);
         // previous visits have set up the previous information

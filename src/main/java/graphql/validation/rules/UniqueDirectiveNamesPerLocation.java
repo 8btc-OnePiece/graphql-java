@@ -1,5 +1,6 @@
 package graphql.validation.rules;
 
+import graphql.Internal;
 import graphql.language.Directive;
 import graphql.language.Document;
 import graphql.language.Field;
@@ -8,18 +9,22 @@ import graphql.language.FragmentSpread;
 import graphql.language.InlineFragment;
 import graphql.language.Node;
 import graphql.language.OperationDefinition;
+import graphql.schema.GraphQLDirective;
 import graphql.validation.AbstractRule;
 import graphql.validation.ValidationContext;
 import graphql.validation.ValidationErrorCollector;
-import graphql.validation.ValidationErrorType;
 
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static graphql.validation.ValidationErrorType.DuplicateDirectiveName;
+
+
 /**
  * https://facebook.github.io/graphql/June2018/#sec-Directives-Are-Unique-Per-Location
  */
+@Internal
 public class UniqueDirectiveNamesPerLocation extends AbstractRule {
 
     public UniqueDirectiveNamesPerLocation(ValidationContext validationContext, ValidationErrorCollector validationErrorCollector) {
@@ -57,20 +62,18 @@ public class UniqueDirectiveNamesPerLocation extends AbstractRule {
     }
 
     private void checkDirectivesUniqueness(Node<?> directivesContainer, List<Directive> directives) {
-        Set<String> names = new LinkedHashSet<>();
-        directives.forEach(directive -> {
+        Set<String> directiveNames = new LinkedHashSet<>();
+        for (Directive directive : directives) {
             String name = directive.getName();
-            if (names.contains(name)) {
-                addError(ValidationErrorType.DuplicateDirectiveName,
-                        directive.getSourceLocation(),
-                        duplicateDirectiveNameMessage(name, directivesContainer.getClass().getSimpleName()));
+            GraphQLDirective graphQLDirective = getValidationContext().getSchema().getDirective(name);
+            boolean nonRepeatable = graphQLDirective != null && graphQLDirective.isNonRepeatable();
+            if (directiveNames.contains(name) && nonRepeatable) {
+                String message = i18n(DuplicateDirectiveName, "UniqueDirectiveNamesPerLocation.uniqueDirectives", name, directivesContainer.getClass().getSimpleName());
+                addError(DuplicateDirectiveName, directive.getSourceLocation(), message);
             } else {
-                names.add(name);
+                directiveNames.add(name);
             }
-        });
+        }
     }
 
-    private String duplicateDirectiveNameMessage(String directiveName, String location) {
-        return String.format("Directives must be uniquely named within a location. The directive '%s' used on a '%s' is not unique.", directiveName, location);
-    }
 }

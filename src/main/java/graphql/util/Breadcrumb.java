@@ -3,11 +3,12 @@ package graphql.util;
 import graphql.PublicApi;
 
 import java.util.Objects;
+import java.util.StringJoiner;
 
 /**
  * A specific {@link NodeLocation} inside a node. This means  {@link #getNode()} returns a Node which has a child
  * at {@link #getLocation()}
- *
+ * <p>
  * A list of Breadcrumbs is used to identify the exact location of a specific node inside a tree.
  *
  * @param <T> the generic type of object
@@ -46,11 +47,17 @@ public class Breadcrumb<T> {
 
     @Override
     public int hashCode() {
-        return Objects.hash(node, location);
+        int result = 1;
+        result = 31 * result + Objects.hashCode(node);
+        result = 31 * result + Objects.hashCode(location);
+        return result;
     }
 
     @Override
     public String toString() {
-        return super.toString();
+        return new StringJoiner(", ", "[", "]")
+                .add("" + location)
+                .add("" + node)
+                .toString();
     }
 }

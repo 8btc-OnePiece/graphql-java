@@ -4,6 +4,7 @@ package graphql.validation;
 import graphql.ErrorType;
 import graphql.GraphQLError;
 import graphql.GraphqlErrorHelper;
+import graphql.PublicApi;
 import graphql.language.SourceLocation;
 
 import java.util.ArrayList;
@@ -11,27 +12,31 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+@PublicApi
 public class ValidationError implements GraphQLError {
 
     private final String message;
     private final List<SourceLocation> locations = new ArrayList<>();
     private final String description;
-    private final ValidationErrorType validationErrorType;
+    private final ValidationErrorClassification validationErrorType;
     private final List<String> queryPath;
     private final Map<String, Object> extensions;
 
-    public ValidationError(ValidationErrorType validationErrorType) {
+    @Deprecated
+    public ValidationError(ValidationErrorClassification validationErrorType) {
         this(newValidationError()
                 .validationErrorType(validationErrorType));
     }
 
-    public ValidationError(ValidationErrorType validationErrorType, SourceLocation sourceLocation, String description) {
+    @Deprecated
+    public ValidationError(ValidationErrorClassification validationErrorType, SourceLocation sourceLocation, String description) {
         this(newValidationError()
                 .validationErrorType(validationErrorType)
                 .sourceLocation(sourceLocation)
                 .description(description));
     }
 
+    @Deprecated
     public ValidationError(ValidationErrorType validationErrorType, SourceLocation sourceLocation, String description, List<String> queryPath) {
         this(newValidationError()
                 .validationErrorType(validationErrorType)
@@ -40,6 +45,7 @@ public class ValidationError implements GraphQLError {
                 .queryPath(queryPath));
     }
 
+    @Deprecated
     public ValidationError(ValidationErrorType validationErrorType, List<SourceLocation> sourceLocations, String description) {
         this(newValidationError()
                 .validationErrorType(validationErrorType)
@@ -47,6 +53,7 @@ public class ValidationError implements GraphQLError {
                 .description(description));
     }
 
+    @Deprecated
     public ValidationError(ValidationErrorType validationErrorType, List<SourceLocation> sourceLocations, String description, List<String> queryPath) {
         this(newValidationError()
                 .validationErrorType(validationErrorType)
@@ -61,23 +68,12 @@ public class ValidationError implements GraphQLError {
             this.locations.addAll(builder.sourceLocations);
         }
         this.description = builder.description;
-        this.message = mkMessage(builder.validationErrorType, builder.description, builder.queryPath);
+        this.message = builder.description;
         this.queryPath = builder.queryPath;
         this.extensions = builder.extensions;
     }
 
-    private String mkMessage(ValidationErrorType validationErrorType, String description, List<String> queryPath) {
-        return String.format("Validation error of type %s: %s%s", validationErrorType, description, toPath(queryPath));
-    }
-
-    private String toPath(List<String> queryPath) {
-        if (queryPath == null) {
-            return "";
-        }
-        return String.format(" @ '%s'", String.join("/", queryPath));
-    }
-
-    public ValidationErrorType getValidationErrorType() {
+    public ValidationErrorClassification getValidationErrorType() {
         return validationErrorType;
     }
 
@@ -140,11 +136,11 @@ public class ValidationError implements GraphQLError {
         private List<SourceLocation> sourceLocations;
         private Map<String, Object> extensions;
         private String description;
-        private ValidationErrorType validationErrorType;
+        private ValidationErrorClassification validationErrorType;
         private List<String> queryPath;
 
 
-        public Builder validationErrorType(ValidationErrorType validationErrorType) {
+        public Builder validationErrorType(ValidationErrorClassification validationErrorType) {
             this.validationErrorType = validationErrorType;
             return this;
         }

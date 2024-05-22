@@ -2,12 +2,10 @@ package graphql.validation;
 
 
 import graphql.Internal;
+import graphql.i18n.I18n;
 import graphql.language.Document;
 import graphql.schema.GraphQLSchema;
 import graphql.validation.rules.ArgumentsOfCorrectType;
-import graphql.validation.rules.DeferredDirectiveOnNonNullableField;
-import graphql.validation.rules.DeferredDirectiveOnQueryOperation;
-import graphql.validation.rules.DeferredMustBeOnAllFields;
 import graphql.validation.rules.ExecutableDefinitions;
 import graphql.validation.rules.FieldsOnCorrectType;
 import graphql.validation.rules.FragmentsOnCompositeType;
@@ -23,33 +21,68 @@ import graphql.validation.rules.NoUnusedVariables;
 import graphql.validation.rules.OverlappingFieldsCanBeMerged;
 import graphql.validation.rules.PossibleFragmentSpreads;
 import graphql.validation.rules.ProvidedNonNullArguments;
-import graphql.validation.rules.ScalarLeafs;
+import graphql.validation.rules.ScalarLeaves;
+import graphql.validation.rules.SubscriptionUniqueRootField;
+import graphql.validation.rules.UniqueArgumentNames;
 import graphql.validation.rules.UniqueDirectiveNamesPerLocation;
 import graphql.validation.rules.UniqueFragmentNames;
 import graphql.validation.rules.UniqueOperationNames;
+import graphql.validation.rules.UniqueVariableNames;
 import graphql.validation.rules.VariableDefaultValuesOfCorrectType;
-import graphql.validation.rules.VariableTypesMatchRule;
+import graphql.validation.rules.VariableTypesMatch;
 import graphql.validation.rules.VariablesAreInputTypes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 @Internal
 public class Validator {
 
-    public List<ValidationError> validateDocument(GraphQLSchema schema, Document document) {
-        ValidationContext validationContext = new ValidationContext(schema, document);
+    static int MAX_VALIDATION_ERRORS = 100;
 
+    /**
+     * `graphql-java` will stop validation after a maximum number of validation messages has been reached.  Attackers
+     * can send pathologically invalid queries to induce a Denial of Service attack and fill memory with 10000s of errors
+     * and burn CPU in process.
+     *
+     * By default, this is set to 100 errors.  You can set a new JVM wide value as the maximum allowed validation errors.
+     *
+     * @param maxValidationErrors the maximum validation errors allow JVM wide
+     */
+    public static void setMaxValidationErrors(int maxValidationErrors) {
+        MAX_VALIDATION_ERRORS = maxValidationErrors;
+    }
 
-        ValidationErrorCollector validationErrorCollector = new ValidationErrorCollector();
+    public static int getMaxValidationErrors() {
+        return MAX_VALIDATION_ERRORS;
+    }
+
+    public List<ValidationError> validateDocument(GraphQLSchema schema, Document document, Locale locale) {
+        return validateDocument(schema, document, ruleClass -> true, locale);
+    }
+
+    public List<ValidationError> validateDocument(GraphQLSchema schema, Document document, Predicate<Class<?>> applyRule, Locale locale) {
+        I18n i18n = I18n.i18n(I18n.BundleType.Validation, locale);
+        ValidationContext validationContext = new ValidationContext(schema, document, i18n);
+
+        ValidationErrorCollector validationErrorCollector = new ValidationErrorCollector(MAX_VALIDATION_ERRORS);
         List<AbstractRule> rules = createRules(validationContext, validationErrorCollector);
+        // filter out any rules they don't want applied
+        rules = rules.stream().filter(r -> applyRule.test(r.getClass())).collect(Collectors.toList());
         LanguageTraversal languageTraversal = new LanguageTraversal();
-        languageTraversal.traverse(document, new RulesVisitor(validationContext, rules));
+        try {
+            languageTraversal.traverse(document, new RulesVisitor(validationContext, rules));
+        } catch (ValidationErrorCollector.MaxValidationErrorsReached ignored) {
+            // if we have generated enough errors, then we can shortcut out
+        }
 
         return validationErrorCollector.getErrors();
     }
 
-    private List<AbstractRule> createRules(ValidationContext validationContext, ValidationErrorCollector validationErrorCollector) {
+    public List<AbstractRule> createRules(ValidationContext validationContext, ValidationErrorCollector validationErrorCollector) {
         List<AbstractRule> rules = new ArrayList<>();
 
         ExecutableDefinitions executableDefinitions = new ExecutableDefinitions(validationContext, validationErrorCollector);
@@ -89,15 +122,15 @@ public class Validator {
         ProvidedNonNullArguments providedNonNullArguments = new ProvidedNonNullArguments(validationContext, validationErrorCollector);
         rules.add(providedNonNullArguments);
 
-        ScalarLeafs scalarLeafs = new ScalarLeafs(validationContext, validationErrorCollector);
-        rules.add(scalarLeafs);
+        ScalarLeaves scalarLeaves = new ScalarLeaves(validationContext, validationErrorCollector);
+        rules.add(scalarLeaves);
 
         VariableDefaultValuesOfCorrectType variableDefaultValuesOfCorrectType = new VariableDefaultValuesOfCorrectType(validationContext, validationErrorCollector);
         rules.add(variableDefaultValuesOfCorrectType);
         VariablesAreInputTypes variablesAreInputTypes = new VariablesAreInputTypes(validationContext, validationErrorCollector);
         rules.add(variablesAreInputTypes);
-        VariableTypesMatchRule variableTypesMatchRule = new VariableTypesMatchRule(validationContext, validationErrorCollector);
-        rules.add(variableTypesMatchRule);
+        VariableTypesMatch variableTypesMatch = new VariableTypesMatch(validationContext, validationErrorCollector);
+        rules.add(variableTypesMatch);
 
         LoneAnonymousOperation loneAnonymousOperation = new LoneAnonymousOperation(validationContext, validationErrorCollector);
         rules.add(loneAnonymousOperation);
@@ -111,15 +144,14 @@ public class Validator {
         UniqueDirectiveNamesPerLocation uniqueDirectiveNamesPerLocation = new UniqueDirectiveNamesPerLocation(validationContext, validationErrorCollector);
         rules.add(uniqueDirectiveNamesPerLocation);
 
-        // our extensions beyond spec
-        DeferredDirectiveOnNonNullableField deferredDirectiveOnNonNullableField = new DeferredDirectiveOnNonNullableField(validationContext, validationErrorCollector);
-        rules.add(deferredDirectiveOnNonNullableField);
+        UniqueArgumentNames uniqueArgumentNamesRule = new UniqueArgumentNames(validationContext, validationErrorCollector);
+        rules.add(uniqueArgumentNamesRule);
 
-        DeferredDirectiveOnQueryOperation deferredDirectiveOnQueryOperation = new DeferredDirectiveOnQueryOperation(validationContext, validationErrorCollector);
-        rules.add(deferredDirectiveOnQueryOperation);
+        UniqueVariableNames uniqueVariableNamesRule = new UniqueVariableNames(validationContext, validationErrorCollector);
+        rules.add(uniqueVariableNamesRule);
 
-        DeferredMustBeOnAllFields deferredMustBeOnAllFields = new DeferredMustBeOnAllFields(validationContext, validationErrorCollector);
-        rules.add(deferredMustBeOnAllFields);
+        SubscriptionUniqueRootField uniqueSubscriptionRootField = new SubscriptionUniqueRootField(validationContext, validationErrorCollector);
+        rules.add(uniqueSubscriptionRootField);
 
         return rules;
     }

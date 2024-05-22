@@ -1,7 +1,7 @@
 grammar GraphqlSDL;
 import GraphqlCommon;
 
-typeSystemDefinition: description?
+typeSystemDefinition:
 schemaDefinition |
 typeDefinition |
 directiveDefinition
@@ -59,7 +59,7 @@ objectTypeExtensionDefinition :
 ;
 
 implementsInterfaces :
-    IMPLEMENTS '&'? typeName+ |
+    IMPLEMENTS '&'? typeName |
     implementsInterfaces '&' typeName ;
 
 fieldsDefinition : '{' fieldDefinition* '}';
@@ -72,11 +72,12 @@ argumentsDefinition : '(' inputValueDefinition+ ')';
 
 inputValueDefinition : description? name ':' type defaultValue? directives?;
 
-interfaceTypeDefinition : description? INTERFACE name directives? fieldsDefinition?;
+interfaceTypeDefinition : description? INTERFACE name implementsInterfaces? directives? fieldsDefinition?;
 
 interfaceTypeExtensionDefinition :
-    EXTEND INTERFACE name directives? extensionFieldsDefinition |
-    EXTEND INTERFACE name directives emptyParentheses?
+    EXTEND INTERFACE name implementsInterfaces? directives? extensionFieldsDefinition |
+    EXTEND INTERFACE name implementsInterfaces? directives emptyParentheses? |
+    EXTEND INTERFACE name implementsInterfaces
 ;
 
 
@@ -120,11 +121,11 @@ inputObjectValueDefinitions : '{' inputValueDefinition* '}';
 extensionInputObjectValueDefinitions : '{' inputValueDefinition+ '}';
 
 
-directiveDefinition : description? DIRECTIVE '@' name argumentsDefinition? 'on' directiveLocations;
+directiveDefinition : description? DIRECTIVE '@' name argumentsDefinition? REPEATABLE? ON_KEYWORD directiveLocations;
 
 directiveLocation : name;
 
 directiveLocations :
-directiveLocation |
+'|'? directiveLocation |
 directiveLocations '|' directiveLocation
 ;

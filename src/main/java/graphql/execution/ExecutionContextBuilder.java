@@ -1,9 +1,14 @@
 package graphql.execution;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import graphql.ExecutionInput;
+import graphql.GraphQLContext;
 import graphql.GraphQLError;
 import graphql.Internal;
 import graphql.PublicApi;
 import graphql.cachecontrol.CacheControl;
+import graphql.collect.ImmutableKit;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationState;
 import graphql.language.Document;
@@ -12,35 +17,36 @@ import graphql.language.OperationDefinition;
 import graphql.schema.GraphQLSchema;
 import org.dataloader.DataLoaderRegistry;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 import static graphql.Assert.assertNotNull;
+import static graphql.collect.ImmutableKit.emptyList;
 
 @PublicApi
 public class ExecutionContextBuilder {
 
-    private Instrumentation instrumentation;
-    private ExecutionId executionId;
-    private InstrumentationState instrumentationState;
-    private GraphQLSchema graphQLSchema;
-    private ExecutionStrategy queryStrategy;
-    private ExecutionStrategy mutationStrategy;
-    private ExecutionStrategy subscriptionStrategy;
-    private Object context;
-    private Object root;
-    private Document document;
-    private OperationDefinition operationDefinition;
-    private Map<String, Object> variables = new LinkedHashMap<>();
-    private Map<String, FragmentDefinition> fragmentsByName = new LinkedHashMap<>();
-    private DataLoaderRegistry dataLoaderRegistry;
-    private CacheControl cacheControl;
-    private Locale locale;
-    private List<GraphQLError> errors = new ArrayList<>();
-    private ValueUnboxer valueUnboxer;
+    Instrumentation instrumentation;
+    ExecutionId executionId;
+    InstrumentationState instrumentationState;
+    GraphQLSchema graphQLSchema;
+    ExecutionStrategy queryStrategy;
+    ExecutionStrategy mutationStrategy;
+    ExecutionStrategy subscriptionStrategy;
+    Object context;
+    GraphQLContext graphQLContext;
+    Object root;
+    Document document;
+    OperationDefinition operationDefinition;
+    CoercedVariables coercedVariables = CoercedVariables.emptyVariables();
+    ImmutableMap<String, FragmentDefinition> fragmentsByName = ImmutableKit.emptyMap();
+    DataLoaderRegistry dataLoaderRegistry;
+    CacheControl cacheControl;
+    Locale locale;
+    ImmutableList<GraphQLError> errors = emptyList();
+    ValueUnboxer valueUnboxer;
+    Object localContext;
+    ExecutionInput executionInput;
 
     /**
      * @return a new builder of {@link graphql.execution.ExecutionContext}s
@@ -74,17 +80,19 @@ public class ExecutionContextBuilder {
         mutationStrategy = other.getMutationStrategy();
         subscriptionStrategy = other.getSubscriptionStrategy();
         context = other.getContext();
+        graphQLContext = other.getGraphQLContext();
+        localContext = other.getLocalContext();
         root = other.getRoot();
         document = other.getDocument();
         operationDefinition = other.getOperationDefinition();
-        variables = new LinkedHashMap<>(other.getVariables());
-        fragmentsByName = new LinkedHashMap<>(other.getFragmentsByName());
+        coercedVariables = other.getCoercedVariables();
+        fragmentsByName = ImmutableMap.copyOf(other.getFragmentsByName());
         dataLoaderRegistry = other.getDataLoaderRegistry();
         cacheControl = other.getCacheControl();
         locale = other.getLocale();
-        errors = new ArrayList<>(other.getErrors());
+        errors = ImmutableList.copyOf(other.getErrors());
         valueUnboxer = other.getValueUnboxer();
-
+        executionInput = other.getExecutionInput();
     }
 
     public ExecutionContextBuilder instrumentation(Instrumentation instrumentation) {
@@ -127,18 +135,40 @@ public class ExecutionContextBuilder {
         return this;
     }
 
+    public ExecutionContextBuilder graphQLContext(GraphQLContext context) {
+        this.graphQLContext = context;
+        return this;
+    }
+
+    public ExecutionContextBuilder localContext(Object localContext) {
+        this.localContext = localContext;
+        return this;
+    }
+
     public ExecutionContextBuilder root(Object root) {
         this.root = root;
         return this;
     }
 
+    /**
+     * @param variables map of already coerced variables
+     * @return this builder
+     *
+     * @deprecated use {@link #coercedVariables(CoercedVariables)} instead
+     */
+    @Deprecated
     public ExecutionContextBuilder variables(Map<String, Object> variables) {
-        this.variables = variables;
+        this.coercedVariables = CoercedVariables.of(variables);
+        return this;
+    }
+
+    public ExecutionContextBuilder coercedVariables(CoercedVariables coercedVariables) {
+        this.coercedVariables = coercedVariables;
         return this;
     }
 
     public ExecutionContextBuilder fragmentsByName(Map<String, FragmentDefinition> fragmentsByName) {
-        this.fragmentsByName = fragmentsByName;
+        this.fragmentsByName = ImmutableMap.copyOf(fragmentsByName);
         return this;
     }
 
@@ -157,6 +187,7 @@ public class ExecutionContextBuilder {
         return this;
     }
 
+    @Deprecated
     public ExecutionContextBuilder cacheControl(CacheControl cacheControl) {
         this.cacheControl = cacheControl;
         return this;
@@ -172,29 +203,19 @@ public class ExecutionContextBuilder {
         return this;
     }
 
-    public ExecutionContext build() {
-        // preconditions
-        assertNotNull(executionId, "You must provide a query identifier");
-
-        return new ExecutionContext(
-                instrumentation,
-                executionId,
-                graphQLSchema,
-                instrumentationState,
-                queryStrategy,
-                mutationStrategy,
-                subscriptionStrategy,
-                fragmentsByName,
-                document,
-                operationDefinition,
-                variables,
-                context,
-                root,
-                dataLoaderRegistry,
-                cacheControl,
-                locale,
-                errors,
-                valueUnboxer);
+    public ExecutionContextBuilder executionInput(ExecutionInput executionInput) {
+        this.executionInput = executionInput;
+        return this;
     }
 
+    public ExecutionContextBuilder resetErrors() {
+        this.errors = emptyList();
+        return this;
+    }
+
+    public ExecutionContext build() {
+        // preconditions
+        assertNotNull(executionId, () -> "You must provide a query identifier");
+        return new ExecutionContext(this);
+    }
 }

@@ -1,6 +1,6 @@
 package graphql.execution.nextgen.result;
 
-import graphql.PublicApi;
+import graphql.Internal;
 import graphql.util.NodeAdapter;
 import graphql.util.NodeLocation;
 
@@ -12,7 +12,11 @@ import java.util.Map;
 import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertTrue;
 
-@PublicApi
+/**
+ * @deprecated Jan 2022 - We have decided to deprecate the NextGen engine, and it will be removed in a future release.
+ */
+@Deprecated
+@Internal
 public class ResultNodeAdapter implements NodeAdapter<ExecutionResultNode> {
 
     public static final ResultNodeAdapter RESULT_NODE_ADAPTER = new ResultNodeAdapter();
@@ -38,7 +42,7 @@ public class ResultNodeAdapter implements NodeAdapter<ExecutionResultNode> {
     public ExecutionResultNode removeChild(ExecutionResultNode parentNode, NodeLocation location) {
         int index = location.getIndex();
         List<ExecutionResultNode> childrenList = new ArrayList<>(parentNode.getChildren());
-        assertTrue(index >= 0 && index < childrenList.size(), "The remove index MUST be within the range of the children");
+        assertTrue(index >= 0 && index < childrenList.size(), () -> "The remove index MUST be within the range of the children");
         childrenList.remove(index);
         return parentNode.withNewChildren(childrenList);
     }

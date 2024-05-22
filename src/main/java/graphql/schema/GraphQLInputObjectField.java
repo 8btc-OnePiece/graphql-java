@@ -1,22 +1,22 @@
 package graphql.schema;
 
 
-import graphql.Internal;
+import graphql.DirectivesUtil;
 import graphql.PublicApi;
 import graphql.language.InputValueDefinition;
+import graphql.language.Value;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertValidName;
-import static graphql.util.FpKit.getByName;
-import static java.util.Collections.emptyList;
+import static graphql.execution.ValuesResolver.getInputValueImpl;
 
 /**
  * Input objects defined via {@link graphql.schema.GraphQLInputObjectType} contains these input fields.
@@ -32,64 +32,37 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
     private final String name;
     private final String description;
     private final GraphQLInputType originalType;
-    private final Object defaultValue;
+    private final InputValueWithState defaultValue;
+
+    private final String deprecationReason;
     private final InputValueDefinition definition;
-    private final List<GraphQLDirective> directives;
+    private final DirectivesUtil.DirectivesHolder directivesHolder;
 
     private GraphQLInputType replacedType;
 
     public static final String CHILD_TYPE = "type";
-    public static final String CHILD_DIRECTIVES = "directives";
 
-    /**
-     * @param name the name
-     * @param type the field type
-     *
-     * @deprecated use the {@link #newInputObjectField()} builder pattern instead, as this constructor will be made private in a future version.
-     */
-    @Internal
-    @Deprecated
-    public GraphQLInputObjectField(String name, GraphQLInputType type) {
-        this(name, null, type, null, emptyList(), null);
-    }
 
-    /**
-     * @param name         the name
-     * @param description  the description
-     * @param type         the field type
-     * @param defaultValue the default value
-     *
-     * @deprecated use the {@link #newInputObjectField()} builder pattern instead, as this constructor will be made private in a future version.
-     */
-    @Internal
-    @Deprecated
-    public GraphQLInputObjectField(String name, String description, GraphQLInputType type, Object defaultValue) {
-        this(name, description, type, defaultValue, emptyList(), null);
-    }
-
-    /**
-     * @param name         the name
-     * @param description  the description
-     * @param type         the field type
-     * @param defaultValue the default value
-     * @param directives   the directives on this type element
-     * @param definition   the AST definition
-     *
-     * @deprecated use the {@link #newInputObjectField()} builder pattern instead, as this constructor will be made private in a future version.
-     */
-    @Internal
-    @Deprecated
-    public GraphQLInputObjectField(String name, String description, GraphQLInputType type, Object defaultValue, List<GraphQLDirective> directives, InputValueDefinition definition) {
+    private GraphQLInputObjectField(
+            String name,
+            String description,
+            GraphQLInputType type,
+            InputValueWithState defaultValue,
+            List<GraphQLDirective> directives,
+            List<GraphQLAppliedDirective> appliedDirectives,
+            InputValueDefinition definition,
+            String deprecationReason) {
         assertValidName(name);
-        assertNotNull(type, "type can't be null");
-        assertNotNull(directives, "directives cannot be null");
+        assertNotNull(type, () -> "type can't be null");
+        assertNotNull(directives, () -> "directives cannot be null");
 
         this.name = name;
         this.originalType = type;
         this.defaultValue = defaultValue;
         this.description = description;
-        this.directives = directives;
+        this.directivesHolder = new DirectivesUtil.DirectivesHolder(directives, appliedDirectives);
         this.definition = definition;
+        this.deprecationReason = deprecationReason;
     }
 
     void replaceType(GraphQLInputType type) {
@@ -105,12 +78,52 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
         return replacedType != null ? replacedType : originalType;
     }
 
-    public Object getDefaultValue() {
+    /**
+     * The default value of this input field.
+     *
+     * The semantics of the returned Object depend on how the {@link InputValueWithState} was created.
+     *
+     * @return a input value with captured state
+     */
+    public @NotNull InputValueWithState getInputFieldDefaultValue() {
         return defaultValue;
+    }
+
+    /**
+     * This static helper method will give out a java value based on the semantics captured
+     * in the {@link InputValueWithState} from {@link GraphQLInputObjectField#getInputFieldDefaultValue()}
+     *
+     * Note : You MUST only call this on a {@link GraphQLInputObjectField} that is part of a fully formed schema.  We need
+     * all of the types to be resolved in order for this work correctly.
+     *
+     * Note: This method will return null if the value is not set or explicitly set to null.  If you you to know the difference
+     * when "not set" and "set to null" then you cant use this method.  Rather you should use {@link GraphQLInputObjectField#getInputFieldDefaultValue()}
+     * and use the {@link InputValueWithState#isNotSet()} methods to decide how to handle those values.
+     *
+     * @param inputObjectField the fully formed {@link GraphQLInputObjectField}
+     * @param <T>              the type you want it cast as
+     *
+     * @return a value of type T which is the java value of the input field default
+     */
+    public static <T> T getInputFieldDefaultValue(GraphQLInputObjectField inputObjectField) {
+        return getInputValueImpl(inputObjectField.getType(), inputObjectField.getInputFieldDefaultValue());
+    }
+
+
+    public boolean hasSetDefaultValue() {
+        return defaultValue.isSet();
     }
 
     public String getDescription() {
         return description;
+    }
+
+    public String getDeprecationReason() {
+        return deprecationReason;
+    }
+
+    public boolean isDeprecated() {
+        return deprecationReason != null;
     }
 
     public InputValueDefinition getDefinition() {
@@ -119,7 +132,37 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
 
     @Override
     public List<GraphQLDirective> getDirectives() {
-        return new ArrayList<>(directives);
+        return directivesHolder.getDirectives();
+    }
+
+    @Override
+    public Map<String, GraphQLDirective> getDirectivesByName() {
+        return directivesHolder.getDirectivesByName();
+    }
+
+    @Override
+    public Map<String, List<GraphQLDirective>> getAllDirectivesByName() {
+        return directivesHolder.getAllDirectivesByName();
+    }
+
+    @Override
+    public GraphQLDirective getDirective(String directiveName) {
+        return directivesHolder.getDirective(directiveName);
+    }
+
+    @Override
+    public List<GraphQLAppliedDirective> getAppliedDirectives() {
+        return directivesHolder.getAppliedDirectives();
+    }
+
+    @Override
+    public Map<String, List<GraphQLAppliedDirective>> getAllAppliedDirectivesByName() {
+        return directivesHolder.getAllAppliedDirectivesByName();
+    }
+
+    @Override
+    public GraphQLAppliedDirective getAppliedDirective(String directiveName) {
+        return directivesHolder.getAppliedDirective(directiveName);
     }
 
     /**
@@ -137,6 +180,12 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
     }
 
     @Override
+    public GraphQLSchemaElement copy() {
+        return newInputObjectField(this).build();
+    }
+
+
+    @Override
     public TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor) {
         return visitor.visitGraphQLInputObjectField(this, context);
     }
@@ -145,14 +194,16 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
     public List<GraphQLSchemaElement> getChildren() {
         List<GraphQLSchemaElement> children = new ArrayList<>();
         children.add(getType());
-        children.addAll(directives);
+        children.addAll(directivesHolder.getDirectives());
+        children.addAll(directivesHolder.getAppliedDirectives());
         return children;
     }
 
     @Override
     public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
         return SchemaElementChildrenContainer.newSchemaElementChildrenContainer()
-                .children(CHILD_DIRECTIVES, directives)
+                .children(CHILD_DIRECTIVES, directivesHolder.getDirectives())
+                .children(CHILD_APPLIED_DIRECTIVES, directivesHolder.getAppliedDirectives())
                 .child(CHILD_TYPE, originalType)
                 .build();
     }
@@ -160,22 +211,47 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
     @Override
     public GraphQLInputObjectField withNewChildren(SchemaElementChildrenContainer newChildren) {
         return transform(builder ->
-                builder.replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
-                        .type((GraphQLInputType) newChildren.getChildOrNull(CHILD_TYPE))
+                builder.type((GraphQLInputType) newChildren.getChildOrNull(CHILD_TYPE))
+                        .replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
+                        .replaceAppliedDirectives(newChildren.getChildren(CHILD_APPLIED_DIRECTIVES))
+
         );
     }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int hashCode() {
+        return super.hashCode();
+    }
+
 
     @Override
     public String toString() {
         return "GraphQLInputObjectField{" +
                 "name='" + name + '\'' +
                 ", description='" + description + '\'' +
-                ", originalType=" + originalType +
+                ", originalType=" + inputTypeToStringAvoidingCircularReference(originalType) +
                 ", defaultValue=" + defaultValue +
                 ", definition=" + definition +
-                ", directives=" + directives +
-                ", replacedType=" + replacedType +
+                ", directives=" + directivesHolder +
+                ", replacedType=" + inputTypeToStringAvoidingCircularReference(replacedType) +
                 '}';
+    }
+
+    private static Object inputTypeToStringAvoidingCircularReference(GraphQLInputType graphQLInputType) {
+        return (graphQLInputType instanceof GraphQLInputObjectType)
+                ? String.format("[%s]", GraphQLInputObjectType.class.getSimpleName())
+                : graphQLInputType;
     }
 
     public static Builder newInputObjectField(GraphQLInputObjectField existing) {
@@ -188,11 +264,12 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
     }
 
     @PublicApi
-    public static class Builder extends GraphqlTypeBuilder {
-        private Object defaultValue;
+    public static class Builder extends GraphqlDirectivesContainerTypeBuilder<Builder,Builder> {
+        private InputValueWithState defaultValue = InputValueWithState.NOT_SET;
         private GraphQLInputType type;
         private InputValueDefinition definition;
-        private final Map<String, GraphQLDirective> directives = new LinkedHashMap<>();
+        private String deprecationReason;
+
 
         public Builder() {
         }
@@ -200,32 +277,20 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
         public Builder(GraphQLInputObjectField existing) {
             this.name = existing.getName();
             this.description = existing.getDescription();
-            this.defaultValue = existing.getDefaultValue();
+            this.defaultValue = existing.getInputFieldDefaultValue();
             this.type = existing.originalType;
             this.definition = existing.getDefinition();
-            this.directives.putAll(getByName(existing.getDirectives(), GraphQLDirective::getName));
-        }
-
-        @Override
-        public Builder name(String name) {
-            super.name(name);
-            return this;
-        }
-
-        @Override
-        public Builder description(String description) {
-            super.description(description);
-            return this;
-        }
-
-        @Override
-        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
-            super.comparatorRegistry(comparatorRegistry);
-            return this;
+            this.deprecationReason = existing.deprecationReason;
+            copyExistingDirectives(existing);
         }
 
         public Builder definition(InputValueDefinition definition) {
             this.definition = definition;
+            return this;
+        }
+
+        public Builder deprecate(String deprecationReason) {
+            this.deprecationReason = deprecationReason;
             return this;
         }
 
@@ -238,57 +303,84 @@ public class GraphQLInputObjectField implements GraphQLNamedSchemaElement, Graph
             return this;
         }
 
-        public Builder defaultValue(Object defaultValue) {
-            this.defaultValue = defaultValue;
-            return this;
-        }
-
-        public Builder withDirectives(GraphQLDirective... directives) {
-            assertNotNull(directives, "directives can't be null");
-            for (GraphQLDirective directive : directives) {
-                withDirective(directive);
-            }
-            return this;
-        }
-
-        public Builder withDirective(GraphQLDirective directive) {
-            assertNotNull(directive, "directive can't be null");
-            directives.put(directive.getName(), directive);
-            return this;
-        }
-
-        public Builder replaceDirectives(List<GraphQLDirective> directives) {
-            assertNotNull(directives, "directive can't be null");
-            this.directives.clear();
-            for (GraphQLDirective directive : directives) {
-                this.directives.put(directive.getName(), directive);
-            }
-            return this;
-        }
-
-
-        public Builder withDirective(GraphQLDirective.Builder builder) {
-            return withDirective(builder.build());
-        }
-
         /**
-         * This is used to clear all the directives in the builder so far.
+         * A legacy method for setting a default value
          *
-         * @return the builder
+         * @param defaultValue the value to set
+         *
+         * @return this builder
+         *
+         * @deprecated use {@link #defaultValueLiteral(Value)}
          */
-        public Builder clearDirectives() {
-            directives.clear();
+        @Deprecated
+        public Builder defaultValue(Object defaultValue) {
+            this.defaultValue = InputValueWithState.newInternalValue(defaultValue);
             return this;
+        }
+
+        public Builder defaultValueLiteral(Value defaultValue) {
+            this.defaultValue = InputValueWithState.newLiteralValue(defaultValue);
+            return this;
+        }
+
+        public Builder defaultValueProgrammatic(Object defaultValue) {
+            this.defaultValue = InputValueWithState.newExternalValue(defaultValue);
+            return this;
+        }
+
+        public Builder clearDefaultValue() {
+            this.defaultValue = InputValueWithState.NOT_SET;
+            return this;
+        }
+
+        // -- the following are repeated to avoid a binary incompatibility problem --
+
+        @Override
+        public Builder replaceDirectives(List<GraphQLDirective> directives) {
+            return super.replaceDirectives(directives);
+        }
+
+        @Override
+        public Builder withDirectives(GraphQLDirective... directives) {
+            return super.withDirectives(directives);
+        }
+
+        @Override
+        public Builder withDirective(GraphQLDirective directive) {
+            return super.withDirective(directive);
+        }
+
+        @Override
+        public Builder withDirective(GraphQLDirective.Builder builder) {
+            return super.withDirective(builder);
+        }
+
+        @Override
+        public Builder clearDirectives() {
+            return super.clearDirectives();
+        }
+
+        @Override
+        public Builder name(String name) {
+            return super.name(name);
+        }
+
+        @Override
+        public Builder description(String description) {
+            return super.description(description);
         }
 
         public GraphQLInputObjectField build() {
+            assertNotNull(type, () -> "type can't be null");
             return new GraphQLInputObjectField(
                     name,
                     description,
                     type,
                     defaultValue,
                     sort(directives, GraphQLInputObjectField.class, GraphQLDirective.class),
-                    definition);
+                    sort(appliedDirectives, GraphQLScalarType.class, GraphQLAppliedDirective.class),
+                    definition,
+                    deprecationReason);
         }
     }
 }

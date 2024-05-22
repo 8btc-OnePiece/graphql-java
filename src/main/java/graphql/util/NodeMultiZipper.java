@@ -1,5 +1,6 @@
 package graphql.util;
 
+import com.google.common.collect.ImmutableList;
 import graphql.PublicApi;
 
 import java.util.ArrayList;
@@ -20,12 +21,12 @@ import static graphql.util.NodeZipper.ModificationType.REPLACE;
 public class NodeMultiZipper<T> {
 
     private final T commonRoot;
-    private final List<NodeZipper<T>> zippers;
+    private final ImmutableList<NodeZipper<T>> zippers;
     private final NodeAdapter<T> nodeAdapter;
 
     public NodeMultiZipper(T commonRoot, List<NodeZipper<T>> zippers, NodeAdapter<T> nodeAdapter) {
         this.commonRoot = assertNotNull(commonRoot);
-        this.zippers = Collections.unmodifiableList(new ArrayList<>(zippers));
+        this.zippers = ImmutableList.copyOf(zippers);
         this.nodeAdapter = nodeAdapter;
     }
 
@@ -34,7 +35,7 @@ public class NodeMultiZipper<T> {
      */
     private NodeMultiZipper(T commonRoot, List<NodeZipper<T>> zippers, NodeAdapter<T> nodeAdapter, Object dummy) {
         this.commonRoot = assertNotNull(commonRoot);
-        this.zippers = Collections.unmodifiableList(zippers);
+        this.zippers = ImmutableList.copyOf(zippers);
         this.nodeAdapter = nodeAdapter;
     }
 
@@ -58,11 +59,11 @@ public class NodeMultiZipper<T> {
         while (curZippers.size() > 1) {
 
             List<NodeZipper<T>> deepestZippers = getDeepestZippers(curZippers);
-            Map<T, List<NodeZipper<T>>> sameParent = zipperWithSameParent(deepestZippers);
+            Map<T, ImmutableList<NodeZipper<T>>> sameParent = zipperWithSameParent(deepestZippers);
 
             List<NodeZipper<T>> newZippers = new ArrayList<>();
             Map<T, NodeZipper<T>> zipperByNode = FpKit.groupingByUniqueKey(curZippers, NodeZipper::getCurNode);
-            for (Map.Entry<T, List<NodeZipper<T>>> entry : sameParent.entrySet()) {
+            for (Map.Entry<T, ImmutableList<NodeZipper<T>>> entry : sameParent.entrySet()) {
                 NodeZipper<T> newZipper = moveUp(entry.getKey(), entry.getValue());
                 Optional<NodeZipper<T>> zipperToBeReplaced = Optional.ofNullable(zipperByNode.get(entry.getKey()));
                 zipperToBeReplaced.ifPresent(curZippers::remove);
@@ -71,7 +72,7 @@ public class NodeMultiZipper<T> {
             curZippers.removeAll(deepestZippers);
             curZippers.addAll(newZippers);
         }
-        assertTrue(curZippers.size() == 1, "unexpected state: all zippers must share the same root node");
+        assertTrue(curZippers.size() == 1, () -> "unexpected state: all zippers must share the same root node");
         return curZippers.iterator().next().toRoot();
     }
 
@@ -104,7 +105,7 @@ public class NodeMultiZipper<T> {
 
     public NodeMultiZipper<T> withReplacedZipper(NodeZipper<T> oldZipper, NodeZipper<T> newZipper) {
         int index = zippers.indexOf(oldZipper);
-        assertTrue(index >= 0, "oldZipper not found");
+        assertTrue(index >= 0, () -> "oldZipper not found");
         List<NodeZipper<T>> newZippers = new ArrayList<>(zippers);
         newZippers.set(index, newZipper);
         return new NodeMultiZipper<>(commonRoot, newZippers, this.nodeAdapter);
@@ -112,7 +113,7 @@ public class NodeMultiZipper<T> {
 
     public NodeMultiZipper<T> withReplacedZipperForNode(T currentNode, T newNode) {
         int index = FpKit.findIndex(zippers, zipper -> zipper.getCurNode() == currentNode);
-        assertTrue(index >= 0, "No current zipper found for provided node");
+        assertTrue(index >= 0, () -> "No current zipper found for provided node");
         NodeZipper<T> newZipper = zippers.get(index).withNewNode(newNode);
         List<NodeZipper<T>> newZippers = new ArrayList<>(zippers);
         newZippers.set(index, newZipper);
@@ -121,18 +122,19 @@ public class NodeMultiZipper<T> {
 
 
     private List<NodeZipper<T>> getDeepestZippers(Set<NodeZipper<T>> zippers) {
-        Map<Integer, List<NodeZipper<T>>> grouped = FpKit.groupingBy(zippers, astZipper -> astZipper.getBreadcrumbs().size());
+        Map<Integer, ImmutableList<NodeZipper<T>>> grouped = FpKit.groupingBy(zippers, astZipper -> astZipper.getBreadcrumbs().size());
 
         Integer maxLevel = Collections.max(grouped.keySet());
         return grouped.get(maxLevel);
     }
 
     private NodeZipper<T> moveUp(T parent, List<NodeZipper<T>> sameParent) {
-        assertNotEmpty(sameParent, "expected at least one zipper");
+        assertNotEmpty(sameParent, () -> "expected at least one zipper");
 
         Map<String, List<T>> childrenMap = new HashMap<>(nodeAdapter.getNamedChildren(parent));
         Map<String, Integer> indexCorrection = new HashMap<>();
 
+        sameParent = new ArrayList<>(sameParent);
         sameParent.sort((zipper1, zipper2) -> {
             int index1 = zipper1.getBreadcrumbs().get(0).getLocation().getIndex();
             int index2 = zipper2.getBreadcrumbs().get(0).getLocation().getIndex();
@@ -188,7 +190,7 @@ public class NodeMultiZipper<T> {
         return new NodeZipper<>(newNode, newBreadcrumbs, this.nodeAdapter);
     }
 
-    private Map<T, List<NodeZipper<T>>> zipperWithSameParent(List<NodeZipper<T>> zippers) {
+    private Map<T, ImmutableList<NodeZipper<T>>> zipperWithSameParent(List<NodeZipper<T>> zippers) {
         return FpKit.groupingBy(zippers, NodeZipper::getParent);
     }
 }

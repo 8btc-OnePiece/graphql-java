@@ -1,6 +1,7 @@
 package graphql.parser
 
-
+import graphql.ExecutionInput
+import graphql.TestUtil
 import graphql.language.Argument
 import graphql.language.ArrayValue
 import graphql.language.AstComparator
@@ -15,12 +16,14 @@ import graphql.language.FloatValue
 import graphql.language.FragmentDefinition
 import graphql.language.FragmentSpread
 import graphql.language.IgnoredChar
+import graphql.language.IgnoredChars
 import graphql.language.InlineFragment
 import graphql.language.InputObjectTypeDefinition
 import graphql.language.IntValue
 import graphql.language.InterfaceTypeDefinition
 import graphql.language.ListType
 import graphql.language.Node
+import graphql.language.NodeBuilder
 import graphql.language.NonNullType
 import graphql.language.NullValue
 import graphql.language.ObjectField
@@ -32,14 +35,34 @@ import graphql.language.Selection
 import graphql.language.SelectionSet
 import graphql.language.SourceLocation
 import graphql.language.StringValue
+import graphql.language.Type
 import graphql.language.TypeName
 import graphql.language.UnionTypeDefinition
 import graphql.language.VariableDefinition
 import graphql.language.VariableReference
+import org.antlr.v4.runtime.CommonTokenStream
+import org.antlr.v4.runtime.ParserRuleContext
+import spock.lang.Issue
 import spock.lang.Specification
 import spock.lang.Unroll
 
 class ParserTest extends Specification {
+
+    static defaultOptions = ParserOptions.getDefaultParserOptions()
+    static defaultOperationOptions = ParserOptions.getDefaultOperationParserOptions()
+    static defaultSdlOptions = ParserOptions.getDefaultSdlParserOptions()
+
+    void setup() {
+        ParserOptions.setDefaultParserOptions(defaultOptions)
+        ParserOptions.setDefaultOperationParserOptions(defaultOperationOptions)
+        ParserOptions.setDefaultSdlParserOptions(defaultSdlOptions)
+    }
+
+    void cleanup() {
+        ParserOptions.setDefaultParserOptions(defaultOptions)
+        ParserOptions.setDefaultOperationParserOptions(defaultOperationOptions)
+        ParserOptions.setDefaultSdlParserOptions(defaultSdlOptions)
+    }
 
 
     def "parse anonymous simple query"() {
@@ -66,11 +89,11 @@ class ParserTest extends Specification {
 
 
     boolean isEqual(Node node1, Node node2) {
-        return new AstComparator().isEqual(node1, node2)
+        return AstComparator.isEqual(node1, node2)
     }
 
     boolean isEqual(List<Node> node1, List<Node> node2) {
-        return new AstComparator().isEqual(node1, node2)
+        return AstComparator.isEqual(node1, node2)
     }
 
     def "parse selectionSet for field"() {
@@ -134,7 +157,7 @@ class ParserTest extends Specification {
         given:
         def input = '{ user(id: 10, name: "homer", admin:true, floatValue: 3.04) }'
 
-        def argument = new Argument("id", new IntValue(10))
+        def argument = new Argument("id", new IntValue(BigInteger.valueOf(10)))
         def argument2 = new Argument("name", new StringValue("homer"))
         def argument3 = new Argument("admin", new BooleanValue(true))
         def argument4 = new Argument("floatValue", new FloatValue(3.04))
@@ -170,20 +193,20 @@ class ParserTest extends Specification {
         and: "expected query"
         def fragmentSpreadFriends = new FragmentSpread("friendFields")
         def selectionSetFriends = new SelectionSet([fragmentSpreadFriends])
-        def friendsField = new Field("friends", [new Argument("first", new IntValue(10))], selectionSetFriends)
+        def friendsField = new Field("friends", [new Argument("first", new IntValue(BigInteger.valueOf(10)))], selectionSetFriends)
 
         def fragmentSpreadMutalFriends = new FragmentSpread("friendFields")
         def selectionSetMutalFriends = new SelectionSet([fragmentSpreadMutalFriends])
-        def mutalFriendsField = new Field("mutualFriends", [new Argument("first", new IntValue(10))], selectionSetMutalFriends)
+        def mutalFriendsField = new Field("mutualFriends", [new Argument("first", new IntValue(BigInteger.valueOf(10)))], selectionSetMutalFriends)
 
-        def userField = new Field("user", [new Argument("id", new IntValue(4))], new SelectionSet([friendsField, mutalFriendsField]))
+        def userField = new Field("user", [new Argument("id", new IntValue(BigInteger.valueOf(4)))], new SelectionSet([friendsField, mutalFriendsField]))
 
         def queryDefinition = OperationDefinition.newOperationDefinition().name("withFragments").operation(OperationDefinition.Operation.QUERY).selectionSet(new SelectionSet([userField])).build()
 
         and: "expected fragment definition"
         def idField = new Field("id")
         def nameField = new Field("name")
-        def profilePicField = new Field("profilePic", [new Argument("size", new IntValue(50))])
+        def profilePicField = new Field("profilePic", [new Argument("size", new IntValue(BigInteger.valueOf(50)))])
         def selectionSet = SelectionSet.newSelectionSet().selections([idField, nameField, profilePicField]).build()
         def fragmentDefinition = FragmentDefinition.newFragmentDefinition().name("friendFields").typeCondition(new TypeName("User")).selectionSet(selectionSet).build()
 
@@ -279,7 +302,7 @@ class ParserTest extends Specification {
 
 
         def helloField = new Field("hello")
-        def variableDefinition = new VariableDefinition("someTest", getOutputType)
+        def variableDefinition = new VariableDefinition("someTest", getOutputType as Type)
         def queryDefinition = OperationDefinition.newOperationDefinition().name("myQuery").operation(OperationDefinition.Operation.QUERY)
                 .variableDefinitions([variableDefinition]).selectionSet(new SelectionSet([helloField])).build()
 
@@ -331,7 +354,7 @@ class ParserTest extends Specification {
         and: "expected query"
 
         def objectValue = ObjectValue.newObjectValue()
-        objectValue.objectField(new ObjectField("intKey", new IntValue(1)))
+        objectValue.objectField(new ObjectField("intKey", new IntValue(BigInteger.valueOf(1))))
         objectValue.objectField(new ObjectField("floatKey", new FloatValue(4.1)))
         objectValue.objectField(new ObjectField("stringKey", new StringValue("world")))
         def subObject = ObjectValue.newObjectValue()
@@ -360,11 +383,33 @@ class ParserTest extends Specification {
 
         when:
         def document = new Parser().parseDocument(input)
-        Field helloField = document.definitions[0].selectionSet.selections[0]
+        Field helloField = (document.definitions[0] as OperationDefinition).selectionSet.selections[0] as Field
 
         then:
         isEqual(helloField, new Field("hello", [new Argument("arg", new StringValue("hello, world"))]))
         helloField.comments.collect { c -> c.content } == [" this is some comment, which should be captured"]
+    }
+
+    @Issue("https://github.com/graphql-java/graphql-java/issues/2767")
+    def "parser does not transform comments to AST nodes when ParserOptions.captureLineComments(false)"() {
+        given:
+        def input = """
+            { # this is some comment, which should be captured
+               hello(arg: "hello, world" ) # test 
+               }
+            """
+        def parserOptionsWithoutCaptureLineComments = ParserOptions.newParserOptions()
+                .captureLineComments(false)
+                .build()
+
+        when:
+        def document = new Parser().parseDocument(input, parserOptionsWithoutCaptureLineComments)
+        Field helloField = (document.definitions[0] as OperationDefinition).selectionSet.selections[0] as Field
+
+        then:
+        isEqual(helloField, new Field("hello", [new Argument("arg", new StringValue("hello, world"))]))
+        assert helloField.comments.isEmpty() // No single-line comments on lone fields
+        assert document.comments.isEmpty() // No single-line comments in entire document
     }
 
     @Unroll
@@ -375,7 +420,7 @@ class ParserTest extends Specification {
             """
         when:
         def document = new Parser().parseDocument(input)
-        Field helloField = document.definitions[0].selectionSet.selections[0]
+        Field helloField = (document.definitions[0] as OperationDefinition).selectionSet.selections[0] as Field
 
         then:
         isEqual(helloField, new Field("hello", [new Argument("arg", new FloatValue(floatValue))]))
@@ -516,9 +561,9 @@ class ParserTest extends Specification {
     }
 
 
-    def "parses null value"() {
+    def "parses null values"() {
         given:
-        def input = "{ foo(bar: null) }"
+        def input = "{ foo(bar: null, bell : null) }"
 
         when:
         def document = new Parser().parseDocument(input)
@@ -526,7 +571,11 @@ class ParserTest extends Specification {
         def selection = operation.selectionSet.selections[0] as Field
 
         then:
-        selection.arguments[0].value == NullValue.Null
+        selection.arguments[0].value instanceof NullValue
+        selection.arguments[1].value instanceof NullValue
+
+        selection.arguments[0].value.sourceLocation.toString() == "SourceLocation{line=1, column=12}"
+        selection.arguments[1].value.sourceLocation.toString() == "SourceLocation{line=1, column=25}"
 
     }
 
@@ -547,6 +596,45 @@ class ParserTest extends Specification {
         selection.name == "foo"
     }
 
+    def "four quotation marks is an illegal string"() {
+        given:
+        def input = '''{foo(arg:[""""])}'''
+
+        when:
+        Parser.parse(input)
+
+        then:
+        def e = thrown(InvalidSyntaxException)
+        e.message.contains("Invalid Syntax")
+    }
+
+    def "three quotation marks is an illegal string"() {
+        given:
+        def input = '''{foo(arg: ["""])}'''
+
+        when:
+        Parser.parse(input)
+
+        then:
+        def e = thrown(InvalidSyntaxException)
+        e.message.contains("Invalid Syntax")
+    }
+
+    def "escaped triple quote inside block string"() {
+        given:
+        def input = '''{foo(arg: """\\"""""")}'''
+
+        when:
+        Document document = Parser.parse(input)
+        OperationDefinition operationDefinition = document.definitions[0] as OperationDefinition
+        Selection selection = operationDefinition.getSelectionSet().getSelections()[0]
+        Field field = (Field) selection
+
+        then:
+        field.getArguments().size() == 1
+        argValue(field, 0) == '"""'
+    }
+
     def "triple quoted strings"() {
         given:
         def input = '''{ field(triple : """triple
@@ -557,7 +645,7 @@ string""", single : "single") }'''
 
         then:
         document.definitions.size() == 1
-        OperationDefinition operationDefinition = document.definitions[0]
+        OperationDefinition operationDefinition = document.definitions[0] as OperationDefinition
         Selection selection = operationDefinition.getSelectionSet().getSelections()[0]
         Field field = (Field) selection
         assert field.getArguments().size() == 2
@@ -583,7 +671,7 @@ triple3 : """edge cases \\""" "" " \\"" \\" edge cases"""
 
         then:
         document.definitions.size() == 1
-        OperationDefinition operationDefinition = document.definitions[0]
+        OperationDefinition operationDefinition = document.definitions[0] as OperationDefinition
         Selection selection = operationDefinition.getSelectionSet().getSelections()[0]
         Field field = (Field) selection
         assert field.getArguments().size() == 3
@@ -681,7 +769,9 @@ triple3 : """edge cases \\""" "" " \\"" \\" edge cases"""
         def input = "{,\r me\n\t} ,\n"
 
         when:
-        Document document = new Parser().parseDocument(input)
+        def captureIgnoredCharsTRUE = ParserOptions.newParserOptions().captureIgnoredChars(true).build()
+
+        Document document = new Parser().parseDocument(input, captureIgnoredCharsTRUE)
         def field = (document.definitions[0] as OperationDefinition).selectionSet.selections[0]
         then:
         field.getIgnoredChars().getLeft().size() == 3
@@ -710,7 +800,7 @@ triple3 : """edge cases \\""" "" " \\"" \\" edge cases"""
         """
         when:
         Document document = new Parser().parseDocument(input)
-        Field getEmployee = (document.definitions[0] as OperationDefinition).selectionSet.selections[0]
+        Field getEmployee = (document.definitions[0] as OperationDefinition).selectionSet.selections[0] as Field
         def argumentValue = getEmployee.getArguments().get(0).getValue()
 
         then:
@@ -746,7 +836,7 @@ triple3 : """edge cases \\""" "" " \\"" \\" edge cases"""
         println document
         then:
         def e = thrown(InvalidSyntaxException)
-        e.message.contains("Invalid syntax")
+        e.message.contains("Invalid Syntax")
         e.sourcePreview == input + "\n"
         e.location.line == 3
         e.location.column == 20
@@ -768,5 +858,393 @@ triple3 : """edge cases \\""" "" " \\"" \\" edge cases"""
         operationDefinition.getComments()[0].content == " Represents the 😕 emoji."
     }
 
+    def "can override antlr to ast"() {
 
+        def query = '''
+            query {
+                field
+            }
+        '''
+        when:
+        Parser parser = new Parser() {
+            @Override
+            protected GraphqlAntlrToLanguage getAntlrToLanguage(CommonTokenStream tokens, MultiSourceReader multiSourceReader) {
+                // this pattern is used in Nadel - its backdoor but needed
+                return new GraphqlAntlrToLanguage(tokens, multiSourceReader) {
+                    @Override
+                    protected void addCommonData(NodeBuilder nodeBuilder, ParserRuleContext parserRuleContext) {
+                        super.addCommonData(nodeBuilder, parserRuleContext)
+                        nodeBuilder.additionalData("key", "value")
+                    }
+                }
+            }
+        }
+
+        def document = parser.parseDocument(query)
+
+        then:
+        document.getAdditionalData().get("key") == "value"
+        document.children[0].getAdditionalData().get("key") == "value"
+
+        when: "The new override method is used"
+        parser = new Parser() {
+
+            @Override
+            protected GraphqlAntlrToLanguage getAntlrToLanguage(CommonTokenStream tokens, MultiSourceReader multiSourceReader, ParserOptions parserOptions) {
+                return new GraphqlAntlrToLanguage(tokens, multiSourceReader, parserOptions) {
+                    @Override
+                    protected void addCommonData(NodeBuilder nodeBuilder, ParserRuleContext parserRuleContext) {
+                        super.addCommonData(nodeBuilder, parserRuleContext)
+                        nodeBuilder.additionalData("key", "value")
+                    }
+                }
+            }
+        }
+
+        document = parser.parseDocument(query)
+
+        then:
+        document.getAdditionalData().get("key") == "value"
+        document.children[0].getAdditionalData().get("key") == "value"
+    }
+
+    def "parse integer"() {
+        given:
+        def input = '''{foo(arg: 11)}'''
+
+        when:
+        Document document = Parser.parse(input)
+        OperationDefinition operationDefinition = document.definitions[0] as OperationDefinition
+        Selection selection = operationDefinition.getSelectionSet().getSelections()[0]
+        Field field = (Field) selection
+
+        then:
+        field.getArguments().size() == 1
+        (field.getArguments()[0].getValue() as IntValue).getValue().intValueExact() == 11
+    }
+
+    @Unroll
+    def "invalid int #value is an error"() {
+        given:
+        def input = "{foo(arg: [$value])}"
+
+        when:
+        Parser.parse(input)
+
+        then:
+        def e = thrown(InvalidSyntaxException)
+        e.message.contains("Invalid Syntax")
+        where:
+        value  | _
+        '00'   | _
+        '01'   | _
+        '123.' | _
+        '123e' | _
+        '123E' | _
+    }
+
+    @Unroll
+    def "invalid float #value is an error"() {
+        given:
+        def input = "{foo(arg: [$value])}"
+
+        when:
+        Parser.parse(input)
+
+        then:
+        def e = thrown(InvalidSyntaxException)
+        e.message.contains("Invalid Syntax")
+        where:
+        value     | _
+        '01.23'   | _
+        '1.2e3.4' | _
+        '1.23.4'  | _
+        '1.2e3e'  | _
+    }
+
+    @Unroll
+    def 'parse ast literals #valueLiteral'() {
+        expect:
+        Parser.parseValue(valueLiteral) in expectedValue
+
+        where:
+        valueLiteral                                  | expectedValue
+        '"s"'                                         | StringValue.class
+        'true'                                        | BooleanValue.class
+        '666'                                         | IntValue.class
+        '666.6'                                       | FloatValue.class
+        '["A", "B", "C"]'                             | ArrayValue.class
+        '{string : "s", integer : 1, boolean : true}' | ObjectValue.class
+    }
+
+    @Unroll
+    def 'parse type literals #typeLiteral'() {
+        expect:
+        Parser.parseType(typeLiteral).isEqualTo(expectedType)
+
+        where:
+        typeLiteral   | expectedType
+        "Foo"         | new TypeName("Foo")
+        "String"      | new TypeName("String")
+        "[String]"    | new ListType(new TypeName("String"))
+        "Boolean!"    | new NonNullType(new TypeName("Boolean"))
+        "Boolean !"   | new NonNullType(new TypeName("Boolean"))
+        "Boolean,  !" | new NonNullType(new TypeName("Boolean"))
+        "[Int]!"      | new NonNullType(new ListType(new TypeName("Int")))
+        "[[String!]]" | new ListType(new ListType(new NonNullType(new TypeName("String"))))
+    }
+
+    @Unroll
+    def 'parse invalid type literal #typeLiteral'() {
+        when:
+        Parser.parseType(typeLiteral)
+
+        then:
+        thrown(InvalidSyntaxException)
+
+        where:
+        typeLiteral | _
+        "[String"   | _
+        "[[Int]"    | _
+        "![Foo]"    | _
+        "!Boolean"  | _
+        "[Int!"     | _
+        "[String]]" | _
+    }
+
+    def "ignored chars can be set on or off"() {
+        def s = '''
+            
+               type X    {
+            s : String
+            }
+        '''
+
+        def captureIgnoredCharsFALSE = ParserOptions.newParserOptions().captureIgnoredChars(false).build()
+        def captureIgnoredCharsTRUE = ParserOptions.newParserOptions().captureIgnoredChars(true).build()
+
+        when: "explicitly off"
+        def doc = new Parser().parseDocument(s, captureIgnoredCharsFALSE)
+        def type = doc.getDefinitionsOfType(ObjectTypeDefinition)[0]
+        then:
+        type.getIgnoredChars() == IgnoredChars.EMPTY
+
+        when: "implicitly off it uses the system default"
+        doc = new Parser().parseDocument(s)
+        type = doc.getDefinitionsOfType(ObjectTypeDefinition)[0]
+
+        then:
+        type.getIgnoredChars() == IgnoredChars.EMPTY
+        !ParserOptions.getDefaultParserOptions().isCaptureIgnoredChars()
+
+        when: "explicitly on"
+
+        doc = new Parser().parseDocument(s, captureIgnoredCharsTRUE)
+        type = doc.getDefinitionsOfType(ObjectTypeDefinition)[0]
+
+        then:
+        type.getIgnoredChars() != IgnoredChars.EMPTY
+        !type.getIgnoredChars().getLeft().isEmpty()
+        !type.getIgnoredChars().getRight().isEmpty()
+
+
+        when: "implicitly on if the static is set"
+        ParserOptions.setDefaultParserOptions(captureIgnoredCharsTRUE)
+        doc = new Parser().parseDocument(s)
+        type = doc.getDefinitionsOfType(ObjectTypeDefinition)[0]
+
+        then:
+        type.getIgnoredChars() != IgnoredChars.EMPTY
+        !type.getIgnoredChars().getLeft().isEmpty()
+        !type.getIgnoredChars().getRight().isEmpty()
+    }
+
+    def "allow braced escaped unicode"() {
+        given:
+        def input = '''
+              {
+              foo(arg: "\\u{1F37A}")
+               }
+        '''
+
+        when:
+        Document document = Parser.parse(input)
+        OperationDefinition operationDefinition = (document.definitions[0] as OperationDefinition)
+        def field = operationDefinition.getSelectionSet().getSelections()[0] as Field
+        def argValue = field.arguments[0].value as StringValue
+
+        then:
+        argValue.getValue() == "🍺" // contains the beer icon U+1F37A : http://www.charbase.com/1f37a-unicode-beer-mug
+    }
+
+    def "allow surrogate pairs escaped unicode"() {
+        given:
+        def input = '''
+              {
+              foo(arg: "\\ud83c\\udf7a")
+               }
+        '''
+
+        when:
+        Document document = Parser.parse(input)
+        OperationDefinition operationDefinition = (document.definitions[0] as OperationDefinition)
+        def field = operationDefinition.getSelectionSet().getSelections()[0] as Field
+        def argValue = field.arguments[0].value as StringValue
+
+        then:
+        argValue.getValue() == "🍺" // contains the beer icon U+1F37 A : http://www.charbase.com/1f37a-unicode-beer-mug
+    }
+
+    def "invalid surrogate pair - no trailing value"() {
+        given:
+        def input = '''
+              {
+              foo(arg: "\\ud83c")
+               }
+        '''
+
+        when:
+        Parser.parse(input)
+
+        then:
+        InvalidSyntaxException e = thrown(InvalidSyntaxException)
+        e.message == "Invalid Syntax : Invalid unicode - leading surrogate must be followed by a trailing surrogate - offending token '\\ud83c' at line 3 column 24"
+    }
+
+    def "invalid surrogate pair - no leading value"() {
+        given:
+        def input = '''
+              {
+              foo(arg: "\\uDC00")
+               }
+        '''
+
+        when:
+        Parser.parse(input)
+
+        then:
+        InvalidSyntaxException e = thrown(InvalidSyntaxException)
+        e.message == "Invalid Syntax : Invalid unicode - trailing surrogate must be preceded with a leading surrogate - offending token '\\uDC00' at line 3 column 24"
+    }
+
+    def "source locations are on by default but can be turned off"() {
+        when:
+        def options = ParserOptions.getDefaultParserOptions()
+
+        def document = new Parser().parseDocument("{ f }")
+        then:
+        options.isCaptureSourceLocation()
+        document.getSourceLocation() == new SourceLocation(1, 1)
+        document.getDefinitions()[0].getSourceLocation() == new SourceLocation(1, 1)
+
+        when:
+        options = ParserOptions.newParserOptions().captureSourceLocation(false).build()
+        document = new Parser().parseDocument("{ f }", options)
+
+        then:
+        !options.isCaptureSourceLocation()
+        document.getSourceLocation() == SourceLocation.EMPTY
+        document.getDefinitions()[0].getSourceLocation() == SourceLocation.EMPTY
+    }
+
+    def "a billion laughs attack will be prevented by default"() {
+        def lol = "@lol" * 10000 // two tokens = 20000+ tokens
+        def text = "query { f $lol }"
+        when:
+        Parser.parse(text)
+
+        then:
+        def e = thrown(ParseCancelledException)
+        e.getMessage().contains("parsing has been cancelled")
+
+        when: "integration test to prove it cancels by default"
+
+        def sdl = """type Query { f : ID} """
+        def graphQL = TestUtil.graphQL(sdl).build()
+        def er = graphQL.execute(text)
+        then:
+        er.errors.size() == 1
+        er.errors[0].message.contains("parsing has been cancelled")
+    }
+
+    def "a large whitespace laughs attack will be prevented by default"() {
+        def spaces = " " * 300_000
+        def text = "query { f $spaces }"
+        when:
+        Parser.parse(text)
+
+        then:
+        def e = thrown(ParseCancelledException)
+        e.getMessage().contains("parsing has been cancelled")
+
+        when: "integration test to prove it cancels by default"
+
+        def sdl = """type Query { f : ID} """
+        def graphQL = TestUtil.graphQL(sdl).build()
+        def er = graphQL.execute(text)
+        then:
+        er.errors.size() == 1
+        er.errors[0].message.contains("parsing has been cancelled")
+    }
+
+    def "they can shoot themselves if they want to with large documents"() {
+        def lol = "@lol" * 10000 // two tokens = 20000+ tokens
+        def text = "query { f $lol }"
+
+        def options = ParserOptions.newParserOptions().maxTokens(30000).build()
+        when:
+        def doc = new Parser().parseDocument(text, options)
+
+        then:
+        doc != null
+    }
+
+    def "they can shoot themselves if they want to with large documents with lots of whitespace"() {
+        def spaces = " " * 300_000
+        def text = "query { f $spaces }"
+
+        def options = ParserOptions.newParserOptions().maxWhitespaceTokens(Integer.MAX_VALUE).build()
+        when:
+        def doc = new Parser().parseDocument(text, options)
+
+        then:
+        doc != null
+    }
+
+    def "they can set their own listener into action"() {
+        def queryText = "query { f(arg : 1) }"
+
+        def count = 0
+        def tokens = []
+        ParsingListener listener = { count++; tokens.add(it.getText()) }
+        def parserOptions = ParserOptions.newParserOptions().parsingListener(listener).build()
+        when:
+        def doc = new Parser().parseDocument(queryText, parserOptions)
+
+        then:
+        doc != null
+        count == 9
+        tokens == ["query", "{", "f", "(", "arg", ":", "1", ")", "}"]
+
+        when: "integration test to prove it be supplied via EI"
+
+        def sdl = """type Query { f(arg : Int) : ID} """
+        def graphQL = TestUtil.graphQL(sdl).build()
+
+
+        def context = [:]
+        context.put(ParserOptions.class, parserOptions)
+        def executionInput = ExecutionInput.newExecutionInput()
+                .query(queryText)
+                .graphQLContext(context).build()
+
+        count = 0
+        tokens = []
+        def er = graphQL.execute(executionInput)
+        then:
+        er.errors.size() == 0
+        count == 9
+        tokens == ["query", "{", "f", "(", "arg", ":", "1", ")", "}"]
+
+    }
 }

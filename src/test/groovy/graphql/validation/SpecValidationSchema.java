@@ -5,6 +5,8 @@ import graphql.TypeResolutionEnvironment;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLEnumType;
+import graphql.schema.GraphQLInputObjectField;
+import graphql.schema.GraphQLInputObjectType;
 import graphql.schema.GraphQLInterfaceType;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLSchema;
@@ -19,11 +21,13 @@ import graphql.validation.SpecValidationSchemaPojos.Human;
 import java.util.HashSet;
 import java.util.Set;
 
+import static graphql.Scalars.GraphQLString;
 import static graphql.introspection.Introspection.DirectiveLocation.FIELD;
 import static graphql.introspection.Introspection.DirectiveLocation.FRAGMENT_DEFINITION;
 import static graphql.introspection.Introspection.DirectiveLocation.FRAGMENT_SPREAD;
 import static graphql.introspection.Introspection.DirectiveLocation.INLINE_FRAGMENT;
 import static graphql.introspection.Introspection.DirectiveLocation.QUERY;
+import static graphql.schema.GraphQLArgument.newArgument;
 import static graphql.schema.GraphQLFieldDefinition.newFieldDefinition;
 import static graphql.schema.GraphQLNonNull.nonNull;
 import static java.util.Collections.singletonList;
@@ -155,10 +159,25 @@ public class SpecValidationSchema {
             })
             .build();
 
+    public static final GraphQLDirective dogDirective = GraphQLDirective.newDirective()
+            .name("dogDirective")
+            .argument(newArgument().name("arg1").type(GraphQLString).build())
+            .validLocations(FIELD, FRAGMENT_SPREAD, FRAGMENT_DEFINITION, INLINE_FRAGMENT, QUERY)
+            .build();
+
     public static final GraphQLObjectType queryRoot = GraphQLObjectType.newObject()
             .name("QueryRoot")
-            .field(newFieldDefinition().name("dog").type(dog))
+            .field(newFieldDefinition().name("dog").type(dog)
+                    .argument(newArgument().name("arg1").type(GraphQLString).build())
+                    .withDirective(dogDirective)
+            )
             .field(newFieldDefinition().name("pet").type(pet))
+            .build();
+
+    public static final GraphQLObjectType subscriptionRoot = GraphQLObjectType.newObject()
+            .name("SubscriptionRoot")
+            .field(newFieldDefinition().name("dog").type(dog))
+            .field(newFieldDefinition().name("cat").type(cat))
             .build();
 
     @SuppressWarnings("serial")
@@ -186,11 +205,38 @@ public class SpecValidationSchema {
             .validLocations(FIELD, FRAGMENT_SPREAD, FRAGMENT_DEFINITION, INLINE_FRAGMENT, QUERY)
             .build();
 
+    public static final GraphQLDirective nonNullDirective = GraphQLDirective.newDirective()
+            .name("nonNullDirective")
+            .argument(newArgument().name("arg1").type(nonNull(GraphQLString)).build())
+            .validLocations(FIELD, FRAGMENT_SPREAD, FRAGMENT_DEFINITION, INLINE_FRAGMENT, QUERY)
+            .build();
+
+    public static final GraphQLInputObjectType inputType = GraphQLInputObjectType.newInputObject()
+            .name("Input")
+            .field(GraphQLInputObjectField.newInputObjectField()
+                    .name("id")
+                    .type(GraphQLString)
+                    .build())
+            .field(GraphQLInputObjectField.newInputObjectField()
+                    .name("name")
+                    .type(nonNull(GraphQLString))
+                    .build())
+            .build();
+
+    public static final GraphQLDirective objectArgumentDirective = GraphQLDirective.newDirective()
+            .name("objectArgumentDirective")
+            .argument(newArgument().name("myObject").type(nonNull(inputType)).build())
+            .validLocations(FIELD, FRAGMENT_SPREAD, FRAGMENT_DEFINITION, INLINE_FRAGMENT, QUERY)
+            .build();
+
     public static final GraphQLSchema specValidationSchema = GraphQLSchema.newSchema()
             .query(queryRoot)
+            .subscription(subscriptionRoot)
             .additionalDirective(upperDirective)
             .additionalDirective(lowerDirective)
+            .additionalDirective(dogDirective)
+            .additionalDirective(nonNullDirective)
+            .additionalDirective(objectArgumentDirective)
             .build(specValidationDictionary);
-
 
 }

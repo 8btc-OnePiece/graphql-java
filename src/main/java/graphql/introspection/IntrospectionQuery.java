@@ -1,5 +1,8 @@
 package graphql.introspection;
 
+import graphql.PublicApi;
+
+@PublicApi
 public interface IntrospectionQuery {
 
     String INTROSPECTION_QUERY = "\n" +
@@ -15,9 +18,10 @@ public interface IntrospectionQuery {
             "        name\n" +
             "        description\n" +
             "        locations\n" +
-            "        args {\n" +
+            "        args(includeDeprecated: true) {\n" +
             "          ...InputValue\n" +
             "        }\n" +
+            "        isRepeatable\n" +
             "      }\n" +
             "    }\n" +
             "  }\n" +
@@ -29,7 +33,7 @@ public interface IntrospectionQuery {
             "    fields(includeDeprecated: true) {\n" +
             "      name\n" +
             "      description\n" +
-            "      args {\n" +
+            "      args(includeDeprecated: true) {\n" +
             "        ...InputValue\n" +
             "      }\n" +
             "      type {\n" +
@@ -38,7 +42,7 @@ public interface IntrospectionQuery {
             "      isDeprecated\n" +
             "      deprecationReason\n" +
             "    }\n" +
-            "    inputFields {\n" +
+            "    inputFields(includeDeprecated: true) {\n" +
             "      ...InputValue\n" +
             "    }\n" +
             "    interfaces {\n" +
@@ -60,6 +64,8 @@ public interface IntrospectionQuery {
             "    description\n" +
             "    type { ...TypeRef }\n" +
             "    defaultValue\n" +
+            "    isDeprecated\n" +
+            "    deprecationReason\n" +
             "  }\n" +
             "\n" +
             //

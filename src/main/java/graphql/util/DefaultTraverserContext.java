@@ -1,9 +1,10 @@
 package graphql.util;
 
+import com.google.common.collect.ImmutableList;
 import graphql.Internal;
+import graphql.collect.ImmutableKit;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -53,12 +54,13 @@ public class DefaultTraverserContext<T> implements TraverserContext<T> {
         this.parallel = parallel;
 
         if (parent == null || parent.isRootContext()) {
-            this.breadcrumbs = Collections.unmodifiableList(Collections.emptyList());
+            this.breadcrumbs = ImmutableKit.emptyList();
         } else {
-            List<Breadcrumb<T>> breadcrumbs = new ArrayList<>(parent.getBreadcrumbs().size() + 1);
-            breadcrumbs.add(new Breadcrumb<>(this.parent.thisNode(), this.location));
-            breadcrumbs.addAll(parent.getBreadcrumbs());
-            this.breadcrumbs = Collections.unmodifiableList(breadcrumbs);
+            this.breadcrumbs = ImmutableList.<Breadcrumb<T>>builderWithExpectedSize(parent.getBreadcrumbs().size() + 1)
+                    .add(new Breadcrumb<>(this.parent.thisNode(), this.location))
+                    .addAll(parent.getBreadcrumbs())
+                    .build();
+
         }
     }
 
@@ -72,7 +74,7 @@ public class DefaultTraverserContext<T> implements TraverserContext<T> {
 
     @Override
     public T thisNode() {
-        assertFalse(this.nodeDeleted, "node is deleted");
+        assertFalse(this.nodeDeleted, () -> "node is deleted");
         if (newNode != null) {
             return newNode;
         }
@@ -87,15 +89,15 @@ public class DefaultTraverserContext<T> implements TraverserContext<T> {
     @Override
     public void changeNode(T newNode) {
         assertNotNull(newNode);
-        assertFalse(this.nodeDeleted, "node is deleted");
+        assertFalse(this.nodeDeleted, () -> "node is deleted");
         this.newNode = newNode;
     }
 
 
     @Override
     public void deleteNode() {
-        assertNull(this.newNode, "node is already changed");
-        assertFalse(this.nodeDeleted, "node is already deleted");
+        assertNull(this.newNode, () -> "node is already changed");
+        assertFalse(this.nodeDeleted, () -> "node is already deleted");
         this.nodeDeleted = true;
     }
 
@@ -221,14 +223,14 @@ public class DefaultTraverserContext<T> implements TraverserContext<T> {
      * PRIVATE: Used by {@link Traverser}
      */
     void setChildrenContexts(Map<String, List<TraverserContext<T>>> children) {
-        assertTrue(this.children == null, "children already set");
+        assertTrue(this.children == null, () -> "children already set");
         this.children = children;
     }
 
 
     @Override
     public Map<String, List<TraverserContext<T>>> getChildrenContexts() {
-        assertNotNull(children, "children not available");
+        assertNotNull(children, () -> "children not available");
         return children;
     }
 

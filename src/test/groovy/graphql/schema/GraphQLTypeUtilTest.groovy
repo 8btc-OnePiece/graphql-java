@@ -6,6 +6,7 @@ import static graphql.Scalars.GraphQLString
 import static graphql.schema.GraphQLList.list
 import static graphql.schema.GraphQLNonNull.nonNull
 import static graphql.schema.GraphQLObjectType.newObject
+import static graphql.schema.GraphQLTypeReference.*
 
 class GraphQLTypeUtilTest extends Specification {
 
@@ -85,7 +86,6 @@ class GraphQLTypeUtilTest extends Specification {
         then:
         GraphQLTypeUtil.isList(type)
 
-
         when:
         type = GraphQLTypeUtil.unwrapOne(type)
 
@@ -98,6 +98,12 @@ class GraphQLTypeUtilTest extends Specification {
         then:
         !GraphQLTypeUtil.isWrapped(type)
         type == GraphQLString
+
+        when:
+        GraphQLScalarType scalar = GraphQLTypeUtil.unwrapOneAs(nonNull(GraphQLString))
+
+        then:
+        scalar == GraphQLString
     }
 
     def "unwrapAll tests"() {
@@ -119,6 +125,38 @@ class GraphQLTypeUtilTest extends Specification {
 
         then:
         type == GraphQLString
+
+    }
+
+    def "unwrapAllAs tests"() {
+        def type = list(nonNull(list(nonNull(GraphQLString))))
+        def typeRef = list(nonNull(list(nonNull(typeRef("A")))))
+
+        when:
+        type = GraphQLTypeUtil.unwrapAllAs(type)
+
+        then:
+        type == GraphQLString
+
+        when:
+        type = GraphQLTypeUtil.unwrapAllAs(type)
+
+        then:
+        type == GraphQLString
+
+        when:
+        typeRef = GraphQLTypeUtil.unwrapAllAs(typeRef)
+
+        then:
+        typeRef instanceof GraphQLTypeReference
+        (typeRef as GraphQLTypeReference).name == "A"
+
+        when:
+        typeRef = GraphQLTypeUtil.unwrapAllAs(typeRef)
+
+        then:
+        typeRef instanceof GraphQLTypeReference
+        (typeRef as GraphQLTypeReference).name == "A"
 
     }
 

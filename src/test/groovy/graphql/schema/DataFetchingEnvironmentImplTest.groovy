@@ -1,5 +1,6 @@
 package graphql.schema
 
+import graphql.GraphQLContext
 import graphql.cachecontrol.CacheControl
 import graphql.execution.ExecutionId
 import graphql.execution.ExecutionStepInfo
@@ -34,6 +35,7 @@ class DataFetchingEnvironmentImplTest extends Specification {
     def executionContext = newExecutionContextBuilder()
             .root("root")
             .context("context")
+            .graphQLContext(GraphQLContext.of(["key":"context"]))
             .executionId(executionId)
             .operationDefinition(operationDefinition)
             .document(document)
@@ -67,6 +69,7 @@ class DataFetchingEnvironmentImplTest extends Specification {
         then:
         dfe.getRoot() == "root"
         dfe.getContext() == "context"
+        dfe.getGraphQlContext().get("key") == "context"
         dfe.getGraphQLSchema() == starWarsSchema
         dfe.getDocument() == document
         dfe.getVariables() == variables
@@ -78,6 +81,7 @@ class DataFetchingEnvironmentImplTest extends Specification {
     def "create environment from existing one will copy everything to new instance"() {
         def dfe = newDataFetchingEnvironment()
                 .context("Test Context")
+                .graphQLContext(GraphQLContext.of(["key": "context"]))
                 .source("Test Source")
                 .root("Test Root")
                 .fieldDefinition(Mock(GraphQLFieldDefinition))
@@ -93,6 +97,8 @@ class DataFetchingEnvironmentImplTest extends Specification {
                 .variables(variables)
                 .dataLoaderRegistry(dataLoaderRegistry)
                 .cacheControl(cacheControl)
+                .locale(Locale.CANADA)
+                .localContext("localContext")
                 .build()
 
         when:
@@ -101,6 +107,7 @@ class DataFetchingEnvironmentImplTest extends Specification {
         then:
         dfe != dfeCopy
         dfe.getContext() == dfeCopy.getContext()
+        dfe.getGraphQlContext() == dfeCopy.getGraphQlContext()
         dfe.getSource() == dfeCopy.getSource()
         dfe.getRoot() == dfeCopy.getRoot()
         dfe.getFieldDefinition() == dfeCopy.getFieldDefinition()
@@ -116,6 +123,8 @@ class DataFetchingEnvironmentImplTest extends Specification {
         dfe.getVariables() == dfeCopy.getVariables()
         dfe.getDataLoader("dataLoader") == dataLoader
         dfe.getCacheControl() == cacheControl
+        dfe.getLocale() == dfeCopy.getLocale()
+        dfe.getLocalContext() == dfeCopy.getLocalContext()
     }
 
     def "get or default support"() {

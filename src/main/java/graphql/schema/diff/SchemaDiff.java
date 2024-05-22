@@ -1,5 +1,6 @@
 package graphql.schema.diff;
 
+import graphql.PublicSpi;
 import graphql.introspection.IntrospectionResultToSchema;
 import graphql.language.Argument;
 import graphql.language.Directive;
@@ -24,7 +25,6 @@ import graphql.language.Value;
 import graphql.schema.diff.reporting.DifferenceReporter;
 import graphql.schema.idl.TypeInfo;
 
-import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +44,7 @@ import static graphql.schema.idl.TypeInfo.typeInfo;
  * {@link graphql.schema.diff.reporting.DifferenceReporter}
  */
 @SuppressWarnings("ConstantConditions")
+@PublicSpi
 public class SchemaDiff {
 
     /**
@@ -69,7 +70,7 @@ public class SchemaDiff {
 
     private static class CountingReporter implements DifferenceReporter {
         final DifferenceReporter delegate;
-        int breakingCount = 1;
+        int breakingCount = 0;
 
         private CountingReporter(DifferenceReporter delegate) {
             this.delegate = delegate;
@@ -270,8 +271,8 @@ public class SchemaDiff {
         ctx.exitType();
     }
 
-    private boolean isDeprecated(DirectivesContainer node) {
-        return node.getDirective("deprecated") != null;
+    private boolean isDeprecated(DirectivesContainer<?> node) {
+        return node.hasDirective("deprecated");
     }
 
     private boolean isReservedType(String typeName) {
@@ -323,6 +324,7 @@ public class SchemaDiff {
         Map<String, Type> oldMemberTypes = sortedMap(oldDef.getMemberTypes(), SchemaDiff::getTypeName);
         Map<String, Type> newMemberTypes = sortedMap(newDef.getMemberTypes(), SchemaDiff::getTypeName);
 
+
         for (Map.Entry<String, Type> entry : oldMemberTypes.entrySet()) {
             String oldMemberTypeName = entry.getKey();
             if (!newMemberTypes.containsKey(oldMemberTypeName)) {
@@ -333,6 +335,9 @@ public class SchemaDiff {
                         .components(oldMemberTypeName)
                         .reasonMsg("The new API does not contain union member type '%s'", oldMemberTypeName)
                         .build());
+            } else {
+                // check type which is in the old and the new Union def
+                checkType(ctx, entry.getValue(), newMemberTypes.get(oldMemberTypeName));
             }
         }
         for (Map.Entry<String, Type> entry : newMemberTypes.entrySet()) {
@@ -472,7 +477,7 @@ public class SchemaDiff {
                         .components(enumName)
                         .reasonMsg("The new API has added a new enum value '%s'", enumName)
                         .build());
-            } else if (isDeprecated(newDefinitionMap.get(enumName))) {
+            } else if (isDeprecated(newDefinitionMap.get(enumName)) && !isDeprecated(oldEnum)) {
                 ctx.report(DiffEvent.apiDanger()
                         .category(DiffCategory.DEPRECATION_ADDED)
                         .typeName(oldDef.getName())
@@ -888,9 +893,9 @@ public class SchemaDiff {
 
     // looks for a type called `Query|Mutation|Subscription` and if it exist then assumes it as an operation def
 
-    private Optional<OperationTypeDefinition> synthOperationTypeDefinition(Function<Type, Optional<ObjectTypeDefinition>> typeReteriver, String opName) {
+    private Optional<OperationTypeDefinition> synthOperationTypeDefinition(Function<Type, Optional<ObjectTypeDefinition>> typeRetriever, String opName) {
         TypeName type = TypeName.newTypeName().name(capitalize(opName)).build();
-        Optional<ObjectTypeDefinition> typeDef = typeReteriver.apply(type);
+        Optional<ObjectTypeDefinition> typeDef = typeRetriever.apply(type);
         return typeDef.map(objectTypeDefinition -> OperationTypeDefinition.newOperationTypeDefinition().name(opName).typeName(type).build());
     }
 

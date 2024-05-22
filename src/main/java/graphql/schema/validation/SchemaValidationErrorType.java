@@ -1,7 +1,23 @@
 package graphql.schema.validation;
 
-public enum SchemaValidationErrorType {
+import graphql.Internal;
+
+@Internal
+public enum SchemaValidationErrorType implements SchemaValidationErrorClassification{
 
     UnbrokenInputCycle,
-    ObjectDoesNotImplementItsInterfaces
+    ObjectDoesNotImplementItsInterfaces,
+    ImplementingTypeLackOfFieldError,
+    InputObjectTypeLackOfFieldError,
+    EnumLackOfValueError,
+    UnionTypeLackOfTypeError,
+    InvalidUnionMemberTypeError,
+    InvalidCustomizedNameError,
+    NonNullWrapNonNullError,
+    RepetitiveElementError,
+    InvalidDefaultValue,
+    InvalidAppliedDirectiveArgument,
+    InvalidAppliedDirective,
+    OutputTypeUsedInInputTypeContext,
+    InputTypeUsedInOutputTypeContext,
 }

@@ -1,6 +1,8 @@
 package graphql.execution.directives;
 
+import com.google.common.collect.ImmutableMap;
 import graphql.Internal;
+import graphql.execution.CoercedVariables;
 import graphql.execution.ValuesResolver;
 import graphql.language.Directive;
 import graphql.schema.GraphQLArgument;
@@ -18,8 +20,6 @@ import java.util.Map;
 @Internal
 public class DirectivesResolver {
 
-    private final ValuesResolver valuesResolver = new ValuesResolver();
-
     public DirectivesResolver() {
     }
 
@@ -33,11 +33,11 @@ public class DirectivesResolver {
                 directiveMap.put(newDirective.getName(), newDirective);
             }
         });
-        return directiveMap;
+        return ImmutableMap.copyOf(directiveMap);
     }
 
     private void buildArguments(GraphQLDirective.Builder directiveBuilder, GraphQLCodeRegistry codeRegistry, GraphQLDirective protoType, Directive fieldDirective, Map<String, Object> variables) {
-        Map<String, Object> argumentValues = valuesResolver.getArgumentValues(codeRegistry, protoType.getArguments(), fieldDirective.getArguments(), variables);
+        Map<String, Object> argumentValues = ValuesResolver.getArgumentValues(codeRegistry, protoType.getArguments(), fieldDirective.getArguments(), CoercedVariables.of(variables));
         directiveBuilder.clearArguments();
         protoType.getArguments().forEach(protoArg -> {
             if (argumentValues.containsKey(protoArg.getName())) {
@@ -45,7 +45,7 @@ public class DirectivesResolver {
                 GraphQLArgument newArgument = protoArg.transform(argBuilder -> argBuilder.value(argValue));
                 directiveBuilder.argument(newArgument);
             } else {
-                // this means they can ask for the argument default value because the arugment on the directive
+                // this means they can ask for the argument default value because the argument on the directive
                 // object is present - but null
                 GraphQLArgument newArgument = protoArg.transform(argBuilder -> argBuilder.value(null));
                 directiveBuilder.argument(newArgument);

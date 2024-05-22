@@ -1,11 +1,12 @@
 package graphql;
 
 import graphql.cachecontrol.CacheControl;
+import graphql.collect.ImmutableKit;
 import graphql.execution.ExecutionId;
+import graphql.execution.RawVariables;
 import graphql.execution.instrumentation.dataloader.DataLoaderDispatcherInstrumentationState;
 import org.dataloader.DataLoaderRegistry;
 
-import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -21,8 +22,11 @@ public class ExecutionInput {
     private final String query;
     private final String operationName;
     private final Object context;
+    private final GraphQLContext graphQLContext;
+    private final Object localContext;
     private final Object root;
-    private final Map<String, Object> variables;
+    private final RawVariables rawVariables;
+    private final Map<String, Object> extensions;
     private final DataLoaderRegistry dataLoaderRegistry;
     private final CacheControl cacheControl;
     private final ExecutionId executionId;
@@ -30,16 +34,19 @@ public class ExecutionInput {
 
 
     @Internal
-    private ExecutionInput(String query, String operationName, Object context, Object root, Map<String, Object> variables, DataLoaderRegistry dataLoaderRegistry, CacheControl cacheControl, ExecutionId executionId, Locale locale) {
-        this.query = assertNotNull(query, "query can't be null");
-        this.operationName = operationName;
-        this.context = context;
-        this.root = root;
-        this.variables = variables;
-        this.dataLoaderRegistry = dataLoaderRegistry;
-        this.cacheControl = cacheControl;
-        this.executionId = executionId;
-        this.locale = locale;
+    private ExecutionInput(Builder builder) {
+        this.query = assertNotNull(builder.query, () -> "query can't be null");
+        this.operationName = builder.operationName;
+        this.context = builder.context;
+        this.graphQLContext = assertNotNull(builder.graphQLContext);
+        this.root = builder.root;
+        this.rawVariables = builder.rawVariables;
+        this.dataLoaderRegistry = builder.dataLoaderRegistry;
+        this.cacheControl = builder.cacheControl;
+        this.executionId = builder.executionId;
+        this.locale = builder.locale;
+        this.localContext = builder.localContext;
+        this.extensions = builder.extensions;
     }
 
     /**
@@ -57,10 +64,30 @@ public class ExecutionInput {
     }
 
     /**
+     * The legacy context object has been deprecated in favour of the more shareable
+     * {@link #getGraphQLContext()}
+     *
      * @return the context object to pass to all data fetchers
+     *
+     * @deprecated - use {@link #getGraphQLContext()}
      */
+    @Deprecated
     public Object getContext() {
         return context;
+    }
+
+    /**
+     * @return the shared {@link GraphQLContext} object to pass to all data fetchers
+     */
+    public GraphQLContext getGraphQLContext() {
+        return graphQLContext;
+    }
+
+    /**
+     * @return the local context object to pass to all top level (i.e. query, mutation, subscription) data fetchers
+     */
+    public Object getLocalContext() {
+        return localContext;
     }
 
     /**
@@ -71,10 +98,17 @@ public class ExecutionInput {
     }
 
     /**
-     * @return a map of variables that can be referenced via $syntax in the query
+     * @return a map of raw variables that can be referenced via $syntax in the query.
      */
     public Map<String, Object> getVariables() {
-        return variables;
+        return rawVariables.toMap();
+    }
+
+    /**
+     * @return a map of raw variables that can be referenced via $syntax in the query.
+     */
+    public RawVariables getRawVariables() {
+        return rawVariables;
     }
 
     /**
@@ -86,7 +120,10 @@ public class ExecutionInput {
 
     /**
      * @return the cache control helper associated with this execution
+     *
+     * @deprecated - Apollo has deprecated the Cache Control specification
      */
+    @Deprecated
     public CacheControl getCacheControl() {
         return cacheControl;
     }
@@ -108,10 +145,18 @@ public class ExecutionInput {
     }
 
     /**
+     * @return a map of extension values that can be sent in to a request
+     */
+    public Map<String, Object> getExtensions() {
+        return extensions;
+    }
+
+    /**
      * This helps you transform the current ExecutionInput object into another one by starting a builder with all
      * the current values and allows you to transform it how you want.
      *
      * @param builderConsumer the consumer code that will be given a builder to transform
+     *
      * @return a new ExecutionInput object based on calling build on that builder
      */
     public ExecutionInput transform(Consumer<Builder> builderConsumer) {
@@ -119,10 +164,13 @@ public class ExecutionInput {
                 .query(this.query)
                 .operationName(this.operationName)
                 .context(this.context)
+                .transfer(this.graphQLContext)
+                .localContext(this.localContext)
                 .root(this.root)
                 .dataLoaderRegistry(this.dataLoaderRegistry)
                 .cacheControl(this.cacheControl)
-                .variables(this.variables)
+                .variables(this.rawVariables.toMap())
+                .extensions(this.extensions)
                 .executionId(this.executionId)
                 .locale(this.locale);
 
@@ -137,8 +185,9 @@ public class ExecutionInput {
                 "query='" + query + '\'' +
                 ", operationName='" + operationName + '\'' +
                 ", context=" + context +
+                ", graphQLContext=" + graphQLContext +
                 ", root=" + root +
-                ", variables=" + variables +
+                ", rawVariables=" + rawVariables +
                 ", dataLoaderRegistry=" + dataLoaderRegistry +
                 ", executionId= " + executionId +
                 ", locale= " + locale +
@@ -156,6 +205,7 @@ public class ExecutionInput {
      * Creates a new builder of ExecutionInput objects with the given query
      *
      * @param query the query to execute
+     *
      * @return a new builder of ExecutionInput objects
      */
     public static Builder newExecutionInput(String query) {
@@ -166,20 +216,23 @@ public class ExecutionInput {
 
         private String query;
         private String operationName;
-        private Object context = GraphQLContext.newContext().build();
+        private GraphQLContext graphQLContext = GraphQLContext.newContext().build();
+        private Object context = graphQLContext; // we make these the same object on purpose - legacy code will get the same object if this change nothing
+        private Object localContext;
         private Object root;
-        private Map<String, Object> variables = Collections.emptyMap();
+        private RawVariables rawVariables = RawVariables.emptyVariables();
+        public Map<String, Object> extensions = ImmutableKit.emptyMap();
         //
         // this is important - it allows code to later known if we never really set a dataloader and hence it can optimize
         // dataloader field tracking away.
         //
         private DataLoaderRegistry dataLoaderRegistry = DataLoaderDispatcherInstrumentationState.EMPTY_DATALOADER_REGISTRY;
         private CacheControl cacheControl = CacheControl.newCacheControl();
-        private Locale locale;
+        private Locale locale = Locale.getDefault();
         private ExecutionId executionId;
 
         public Builder query(String query) {
-            this.query = assertNotNull(query, "query can't be null");
+            this.query = assertNotNull(query, () -> "query can't be null");
             return this;
         }
 
@@ -192,13 +245,13 @@ public class ExecutionInput {
          * A default one will be assigned, but you can set your own.
          *
          * @param executionId an execution id object
+         *
          * @return this builder
          */
         public Builder executionId(ExecutionId executionId) {
             this.executionId = executionId;
             return this;
         }
-
 
         /**
          * Sets the locale to use for this operation
@@ -213,25 +266,94 @@ public class ExecutionInput {
         }
 
         /**
-         * By default you will get a {@link GraphQLContext} object but you can set your own.
+         * Sets initial localContext in root data fetchers
          *
-         * @param context the context object to use
+         * @param localContext the local context to use
+         *
          * @return this builder
          */
+        public Builder localContext(Object localContext) {
+            this.localContext = localContext;
+            return this;
+        }
+
+        /**
+         * The legacy context object
+         *
+         * @param context the context object to use
+         *
+         * @return this builder
+         *
+         * @deprecated - the {@link ExecutionInput#getGraphQLContext()} is a fixed mutable instance now
+         */
+        @Deprecated
         public Builder context(Object context) {
             this.context = context;
             return this;
         }
 
+        /**
+         * The legacy context object
+         *
+         * @param contextBuilder the context builder object to use
+         *
+         * @return this builder
+         *
+         * @deprecated - the {@link ExecutionInput#getGraphQLContext()} is a fixed mutable instance now
+         */
+        @Deprecated
         public Builder context(GraphQLContext.Builder contextBuilder) {
             this.context = contextBuilder.build();
             return this;
         }
 
+        /**
+         * The legacy context object
+         *
+         * @param contextBuilderFunction the context builder function to use
+         *
+         * @return this builder
+         *
+         * @deprecated - the {@link ExecutionInput#getGraphQLContext()} is a fixed mutable instance now
+         */
+        @Deprecated
         public Builder context(UnaryOperator<GraphQLContext.Builder> contextBuilderFunction) {
             GraphQLContext.Builder builder = GraphQLContext.newContext();
             builder = contextBuilderFunction.apply(builder);
             return context(builder.build());
+        }
+
+        /**
+         * This will give you a builder of {@link GraphQLContext} and any values you set will be copied
+         * into the underlying {@link GraphQLContext} of this execution input
+         *
+         * @param builderFunction a builder function you can use to put values into the context
+         *
+         * @return this builder
+         */
+        public Builder graphQLContext(Consumer<GraphQLContext.Builder> builderFunction) {
+            GraphQLContext.Builder builder = GraphQLContext.newContext();
+            builderFunction.accept(builder);
+            this.graphQLContext.putAll(builder);
+            return this;
+        }
+
+        /**
+         * This will put all the values from the map into the underlying {@link GraphQLContext} of this execution input
+         *
+         * @param mapOfContext a map of values to put in the context
+         *
+         * @return this builder
+         */
+        public Builder graphQLContext(Map<?, Object> mapOfContext) {
+            this.graphQLContext.putAll(mapOfContext);
+            return this;
+        }
+
+        // hidden on purpose
+        private Builder transfer(GraphQLContext graphQLContext) {
+            this.graphQLContext = Assert.assertNotNull(graphQLContext);
+            return this;
         }
 
         public Builder root(Object root) {
@@ -239,8 +361,21 @@ public class ExecutionInput {
             return this;
         }
 
-        public Builder variables(Map<String, Object> variables) {
-            this.variables = assertNotNull(variables, "variables map can't be null");
+        /**
+         * Adds raw (not coerced) variables
+         *
+         * @param rawVariables the map of raw variables
+         *
+         * @return this builder
+         */
+        public Builder variables(Map<String, Object> rawVariables) {
+            assertNotNull(rawVariables, () -> "variables map can't be null");
+            this.rawVariables = RawVariables.of(rawVariables);
+            return this;
+        }
+
+        public Builder extensions(Map<String, Object> extensions) {
+            this.extensions = assertNotNull(extensions, () -> "extensions map can't be null");
             return this;
         }
 
@@ -250,6 +385,7 @@ public class ExecutionInput {
          * instances as this will create unexpected results.
          *
          * @param dataLoaderRegistry a registry of {@link org.dataloader.DataLoader}s
+         *
          * @return this builder
          */
         public Builder dataLoaderRegistry(DataLoaderRegistry dataLoaderRegistry) {
@@ -257,13 +393,14 @@ public class ExecutionInput {
             return this;
         }
 
+        @Deprecated
         public Builder cacheControl(CacheControl cacheControl) {
             this.cacheControl = assertNotNull(cacheControl);
             return this;
         }
 
         public ExecutionInput build() {
-            return new ExecutionInput(query, operationName, context, root, variables, dataLoaderRegistry, cacheControl, executionId, locale);
+            return new ExecutionInput(this);
         }
     }
 }

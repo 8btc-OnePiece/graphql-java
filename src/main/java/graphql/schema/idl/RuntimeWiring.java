@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
 import static graphql.Assert.assertNotNull;
@@ -39,6 +40,14 @@ public class RuntimeWiring {
     private final GraphQLCodeRegistry codeRegistry;
     private final GraphqlTypeComparatorRegistry comparatorRegistry;
 
+    /**
+     * This is a Runtime wiring which provides mocked types resolver
+     * and scalars. Useful for testing only.
+     */
+    public static final RuntimeWiring MOCKED_WIRING = RuntimeWiring
+            .newRuntimeWiring()
+            .wiringFactory(new MockedWiringFactory()).build();
+
     private RuntimeWiring(Builder builder) {
         this.dataFetchers = builder.dataFetchers;
         this.defaultDataFetchers = builder.defaultDataFetchers;
@@ -59,6 +68,42 @@ public class RuntimeWiring {
      */
     public static Builder newRuntimeWiring() {
         return new Builder();
+    }
+
+    /**
+     * @param originalRuntimeWiring the runtime wiring to start from
+     *
+     * @return a builder of Runtime Wiring based on the provided one
+     */
+    public static Builder newRuntimeWiring(RuntimeWiring originalRuntimeWiring) {
+        Builder builder = new Builder();
+        builder.dataFetchers.putAll(originalRuntimeWiring.dataFetchers);
+        builder.defaultDataFetchers.putAll(originalRuntimeWiring.defaultDataFetchers);
+        builder.scalars.putAll(originalRuntimeWiring.scalars);
+        builder.typeResolvers.putAll(originalRuntimeWiring.typeResolvers);
+        builder.registeredDirectiveWiring.putAll(originalRuntimeWiring.registeredDirectiveWiring);
+        builder.directiveWiring.addAll(originalRuntimeWiring.directiveWiring);
+        builder.wiringFactory = originalRuntimeWiring.wiringFactory;
+        builder.enumValuesProviders.putAll(originalRuntimeWiring.enumValuesProviders);
+        builder.schemaGeneratorPostProcessings.addAll(originalRuntimeWiring.schemaGeneratorPostProcessings);
+        builder.fieldVisibility = originalRuntimeWiring.fieldVisibility;
+        builder.codeRegistry = originalRuntimeWiring.codeRegistry;
+        builder.comparatorRegistry = originalRuntimeWiring.comparatorRegistry;
+        return builder;
+    }
+
+    /**
+     * This helps you transform the current RuntimeWiring object into another one by starting a builder with all
+     * the current values and allows you to transform it how you want.
+     *
+     * @param builderConsumer the consumer code that will be given a builder to transform
+     *
+     * @return a new RuntimeWiring object based on calling build on that builder
+     */
+    public RuntimeWiring transform(Consumer<Builder> builderConsumer) {
+        Builder builder = newRuntimeWiring(this);
+        builderConsumer.accept(builder);
+        return builder.build();
     }
 
     public GraphQLCodeRegistry getCodeRegistry() {
@@ -129,9 +174,7 @@ public class RuntimeWiring {
         private GraphqlTypeComparatorRegistry comparatorRegistry = GraphqlTypeComparatorRegistry.AS_IS_REGISTRY;
 
         private Builder() {
-            ScalarInfo.STANDARD_SCALARS.forEach(this::scalar);
-            // we give this out by default
-            registeredDirectiveWiring.put(FetchSchemaDirectiveWiring.FETCH, new FetchSchemaDirectiveWiring());
+            ScalarInfo.GRAPHQL_SPECIFICATION_SCALARS.forEach(this::scalar);
         }
 
         /**
@@ -142,7 +185,7 @@ public class RuntimeWiring {
          * @return this outer builder
          */
         public Builder wiringFactory(WiringFactory wiringFactory) {
-            assertNotNull(wiringFactory, "You must provide a wiring factory");
+            assertNotNull(wiringFactory, () -> "You must provide a wiring factory");
             this.wiringFactory = wiringFactory;
             return this;
         }
@@ -293,6 +336,8 @@ public class RuntimeWiring {
          * You can specify your own sort order of graphql types via {@link graphql.schema.GraphqlTypeComparatorRegistry}
          * which will tell you what type of objects you are to sort when
          * it asks for a comparator.
+         *
+         * @param comparatorRegistry your own comparator registry
          *
          * @return the runtime wiring builder
          */

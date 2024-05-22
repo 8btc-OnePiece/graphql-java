@@ -1,15 +1,17 @@
 package graphql.schema;
 
-import graphql.AssertException;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import graphql.DirectivesUtil;
 import graphql.Internal;
 import graphql.PublicApi;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputObjectTypeExtensionDefinition;
+import graphql.util.FpKit;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,14 +19,15 @@ import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
 import static graphql.Assert.assertNotNull;
+import static graphql.Assert.assertShouldNeverHappen;
 import static graphql.Assert.assertValidName;
+import static graphql.collect.ImmutableKit.emptyList;
 import static graphql.util.FpKit.getByName;
-import static java.util.Collections.emptyList;
 
 /**
  * graphql clearly delineates between the types of objects that represent the output of a query and input objects that
  * can be fed into a graphql mutation.  You can define objects as input to graphql via this class
- *
+ * <p>
  * See http://graphql.org/learn/schema/#input-types for more details on the concept
  */
 @PublicApi
@@ -32,63 +35,36 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
 
     private final String name;
     private final String description;
-    private final Map<String, GraphQLInputObjectField> fieldMap = new LinkedHashMap<>();
+    private final ImmutableMap<String, GraphQLInputObjectField> fieldMap;
     private final InputObjectTypeDefinition definition;
-    private final List<InputObjectTypeExtensionDefinition> extensionDefinitions;
-    private final List<GraphQLDirective> directives;
+    private final ImmutableList<InputObjectTypeExtensionDefinition> extensionDefinitions;
+    private final DirectivesUtil.DirectivesHolder directives;
 
     public static final String CHILD_FIELD_DEFINITIONS = "fieldDefinitions";
-    public static final String CHILD_DIRECTIVES = "directives";
 
-    /**
-     * @param name        the name
-     * @param description the description
-     * @param fields      the fields
-     *
-     * @deprecated use the {@link #newInputObject()} builder pattern instead, as this constructor will be made private in a future version.
-     */
     @Internal
-    @Deprecated
-    public GraphQLInputObjectType(String name, String description, List<GraphQLInputObjectField> fields) {
-        this(name, description, fields, emptyList(), null);
-    }
-
-    /**
-     * @param name        the name
-     * @param description the description
-     * @param fields      the fields
-     * @param directives  the directives on this type element
-     * @param definition  the AST definition
-     *
-     * @deprecated use the {@link #newInputObject()} builder pattern instead, as this constructor will be made private in a future version.
-     */
-    @Internal
-    @Deprecated
-    public GraphQLInputObjectType(String name, String description, List<GraphQLInputObjectField> fields, List<GraphQLDirective> directives, InputObjectTypeDefinition definition) {
-        this(name, description, fields, directives, definition, emptyList());
-    }
-
-    public GraphQLInputObjectType(String name, String description, List<GraphQLInputObjectField> fields, List<GraphQLDirective> directives, InputObjectTypeDefinition definition, List<InputObjectTypeExtensionDefinition> extensionDefinitions) {
+    private GraphQLInputObjectType(String name,
+                                   String description,
+                                   List<GraphQLInputObjectField> fields,
+                                   List<GraphQLDirective> directives,
+                                   List<GraphQLAppliedDirective> appliedDirectives,
+                                   InputObjectTypeDefinition definition,
+                                   List<InputObjectTypeExtensionDefinition> extensionDefinitions) {
         assertValidName(name);
-        assertNotNull(fields, "fields can't be null");
-        assertNotNull(directives, "directives cannot be null");
+        assertNotNull(fields, () -> "fields can't be null");
+        assertNotNull(directives, () -> "directives cannot be null");
 
         this.name = name;
         this.description = description;
         this.definition = definition;
-        this.extensionDefinitions = Collections.unmodifiableList(new ArrayList<>(extensionDefinitions));
-        this.directives = directives;
-        buildMap(fields);
+        this.extensionDefinitions = ImmutableList.copyOf(extensionDefinitions);
+        this.directives = new DirectivesUtil.DirectivesHolder(directives, appliedDirectives);
+        this.fieldMap = buildDefinitionMap(fields);
     }
 
-    private void buildMap(List<GraphQLInputObjectField> fields) {
-        for (GraphQLInputObjectField field : fields) {
-            String name = field.getName();
-            if (fieldMap.containsKey(name)) {
-                throw new AssertException("field " + name + " redefined");
-            }
-            fieldMap.put(name, field);
-        }
+    private ImmutableMap<String, GraphQLInputObjectField> buildDefinitionMap(List<GraphQLInputObjectField> fieldDefinitions) {
+        return ImmutableMap.copyOf(FpKit.getByName(fieldDefinitions, GraphQLInputObjectField::getName,
+                (fld1, fld2) -> assertShouldNeverHappen("Duplicated definition for field '%s' in type '%s'", fld1.getName(), this.name)));
     }
 
     @Override
@@ -101,7 +77,7 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
     }
 
     public List<GraphQLInputObjectField> getFields() {
-        return new ArrayList<>(fieldMap.values());
+        return getFieldDefinitions();
     }
 
     public GraphQLInputObjectField getField(String name) {
@@ -110,7 +86,37 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
 
     @Override
     public List<GraphQLDirective> getDirectives() {
-        return new ArrayList<>(directives);
+        return directives.getDirectives();
+    }
+
+    @Override
+    public Map<String, GraphQLDirective> getDirectivesByName() {
+        return directives.getDirectivesByName();
+    }
+
+    @Override
+    public Map<String, List<GraphQLDirective>> getAllDirectivesByName() {
+        return directives.getAllDirectivesByName();
+    }
+
+    @Override
+    public GraphQLDirective getDirective(String directiveName) {
+        return directives.getDirective(directiveName);
+    }
+
+    @Override
+    public List<GraphQLAppliedDirective> getAppliedDirectives() {
+        return directives.getAppliedDirectives();
+    }
+
+    @Override
+    public Map<String, List<GraphQLAppliedDirective>> getAllAppliedDirectivesByName() {
+        return directives.getAllAppliedDirectivesByName();
+    }
+
+    @Override
+    public GraphQLAppliedDirective getAppliedDirective(String directiveName) {
+        return directives.getAppliedDirective(directiveName);
     }
 
     @Override
@@ -120,7 +126,7 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
 
     @Override
     public List<GraphQLInputObjectField> getFieldDefinitions() {
-        return new ArrayList<>(fieldMap.values());
+        return ImmutableList.copyOf(fieldMap.values());
     }
 
     public InputObjectTypeDefinition getDefinition() {
@@ -146,6 +152,12 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
     }
 
     @Override
+    public GraphQLSchemaElement copy() {
+        return newInputObject(this).build();
+    }
+
+
+    @Override
     public TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor) {
         return visitor.visitGraphQLInputObjectType(this, context);
     }
@@ -153,7 +165,8 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
     @Override
     public List<GraphQLSchemaElement> getChildren() {
         List<GraphQLSchemaElement> children = new ArrayList<>(fieldMap.values());
-        children.addAll(directives);
+        children.addAll(directives.getDirectives());
+        children.addAll(directives.getAppliedDirectives());
         return children;
     }
 
@@ -161,17 +174,36 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
     public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
         return SchemaElementChildrenContainer.newSchemaElementChildrenContainer()
                 .children(CHILD_FIELD_DEFINITIONS, fieldMap.values())
-                .children(CHILD_DIRECTIVES, directives)
+                .children(CHILD_DIRECTIVES, directives.getDirectives())
+                .children(CHILD_APPLIED_DIRECTIVES, directives.getAppliedDirectives())
                 .build();
     }
 
     @Override
     public GraphQLInputObjectType withNewChildren(SchemaElementChildrenContainer newChildren) {
         return transform(builder ->
-                builder.replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
-                        .replaceFields(newChildren.getChildren(CHILD_FIELD_DEFINITIONS))
+                builder.replaceFields(newChildren.getChildren(CHILD_FIELD_DEFINITIONS))
+                        .replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
+                        .replaceAppliedDirectives(newChildren.getChildren(CHILD_APPLIED_DIRECTIVES))
         );
     }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int hashCode() {
+        return super.hashCode();
+    }
+
 
     @Override
     public String toString() {
@@ -193,11 +225,10 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
     }
 
     @PublicApi
-    public static class Builder extends GraphqlTypeBuilder {
+    public static class Builder extends GraphqlDirectivesContainerTypeBuilder<Builder, Builder> {
         private InputObjectTypeDefinition definition;
         private List<InputObjectTypeExtensionDefinition> extensionDefinitions = emptyList();
         private final Map<String, GraphQLInputObjectField> fields = new LinkedHashMap<>();
-        private final Map<String, GraphQLDirective> directives = new LinkedHashMap<>();
 
         public Builder() {
         }
@@ -208,25 +239,7 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
             this.definition = existing.getDefinition();
             this.extensionDefinitions = existing.getExtensionDefinitions();
             this.fields.putAll(getByName(existing.getFields(), GraphQLInputObjectField::getName));
-            this.directives.putAll(getByName(existing.getDirectives(), GraphQLDirective::getName));
-        }
-
-        @Override
-        public Builder name(String name) {
-            super.name(name);
-            return this;
-        }
-
-        @Override
-        public Builder description(String description) {
-            super.description(description);
-            return this;
-        }
-
-        @Override
-        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
-            super.comparatorRegistry(comparatorRegistry);
-            return this;
+            copyExistingDirectives(existing);
         }
 
         public Builder definition(InputObjectTypeDefinition definition) {
@@ -240,7 +253,7 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
         }
 
         public Builder field(GraphQLInputObjectField field) {
-            assertNotNull(field, "field can't be null");
+            assertNotNull(field, () -> "field can't be null");
             fields.put(field.getName(), field);
             return this;
         }
@@ -259,7 +272,7 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
          * @return this
          */
         public Builder field(UnaryOperator<GraphQLInputObjectField.Builder> builderFunction) {
-            assertNotNull(builderFunction, "builderFunction should not be null");
+            assertNotNull(builderFunction, () -> "builderFunction should not be null");
             GraphQLInputObjectField.Builder builder = GraphQLInputObjectField.newInputObjectField();
             builder = builderFunction.apply(builder);
             return field(builder);
@@ -284,7 +297,6 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
 
         public Builder replaceFields(List<GraphQLInputObjectField> fields) {
             this.fields.clear();
-            ;
             fields.forEach(this::field);
             return this;
         }
@@ -303,40 +315,41 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
             return this;
         }
 
-        public Builder withDirectives(GraphQLDirective... directives) {
-            for (GraphQLDirective directive : directives) {
-                withDirective(directive);
-            }
-            return this;
-        }
+        // -- the following are repeated to avoid a binary incompatibility problem --
 
-        public Builder withDirective(GraphQLDirective directive) {
-            assertNotNull(directive, "directive can't be null");
-            directives.put(directive.getName(), directive);
-            return this;
-        }
-
+        @Override
         public Builder replaceDirectives(List<GraphQLDirective> directives) {
-            assertNotNull(directives, "directive can't be null");
-            this.directives.clear();
-            for (GraphQLDirective directive : directives) {
-                this.directives.put(directive.getName(), directive);
-            }
-            return this;
+            return super.replaceDirectives(directives);
         }
 
+        @Override
+        public Builder withDirectives(GraphQLDirective... directives) {
+            return super.withDirectives(directives);
+        }
+
+        @Override
+        public Builder withDirective(GraphQLDirective directive) {
+            return super.withDirective(directive);
+        }
+
+        @Override
         public Builder withDirective(GraphQLDirective.Builder builder) {
-            return withDirective(builder.build());
+            return super.withDirective(builder);
         }
 
-        /**
-         * This is used to clear all the directives in the builder so far.
-         *
-         * @return the builder
-         */
+        @Override
         public Builder clearDirectives() {
-            directives.clear();
-            return this;
+            return super.clearDirectives();
+        }
+
+        @Override
+        public Builder name(String name) {
+            return super.name(name);
+        }
+
+        @Override
+        public Builder description(String description) {
+            return super.description(description);
         }
 
         public GraphQLInputObjectType build() {
@@ -345,6 +358,7 @@ public class GraphQLInputObjectType implements GraphQLNamedInputType, GraphQLUnm
                     description,
                     sort(fields, GraphQLInputObjectType.class, GraphQLInputObjectField.class),
                     sort(directives, GraphQLInputObjectType.class, GraphQLDirective.class),
+                    sort(appliedDirectives, GraphQLInputObjectType.class, GraphQLAppliedDirective.class),
                     definition,
                     extensionDefinitions);
         }

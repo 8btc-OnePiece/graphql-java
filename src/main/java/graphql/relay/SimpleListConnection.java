@@ -2,12 +2,12 @@ package graphql.relay;
 
 import graphql.PublicApi;
 import graphql.TrivialDataFetcher;
+import graphql.collect.ImmutableKit;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import static graphql.Assert.assertNotNull;
@@ -24,8 +24,8 @@ public class SimpleListConnection<T> implements DataFetcher<Connection<T>>, Triv
     private final List<T> data;
 
     public SimpleListConnection(List<T> data, String prefix) {
-        this.data = assertNotNull(data, " data cannot be null");
-        assertTrue(prefix != null && !prefix.isEmpty(), "prefix cannot be null or empty");
+        this.data = assertNotNull(data, () -> " data cannot be null");
+        assertTrue(prefix != null && !prefix.isEmpty(), () -> "prefix cannot be null or empty");
         this.prefix = prefix;
     }
 
@@ -59,7 +59,9 @@ public class SimpleListConnection<T> implements DataFetcher<Connection<T>>, Triv
         int beforeOffset = getOffsetFromCursor(environment.getArgument("before"), edges.size());
         int end = Math.min(beforeOffset, edges.size());
 
-        if (begin > end) begin = end;
+        if (begin > end) {
+            begin = end;
+        }
 
         edges = edges.subList(begin, end);
         if (edges.size() == 0) {
@@ -105,7 +107,7 @@ public class SimpleListConnection<T> implements DataFetcher<Connection<T>>, Triv
 
     private Connection<T> emptyConnection() {
         PageInfo pageInfo = new DefaultPageInfo(0, null, null, false, false);
-        return new DefaultConnection<>(Collections.emptyList(), pageInfo);
+        return new DefaultConnection<>(ImmutableKit.emptyList(), pageInfo);
     }
 
     /**

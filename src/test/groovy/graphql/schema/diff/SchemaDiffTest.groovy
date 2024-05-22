@@ -35,22 +35,27 @@ class SchemaDiffTest extends Specification {
 
     private static final TypeResolver NULL_TYPE_RESOLVER = { env -> null }
 
-    static GraphQLScalarType CUSTOM_SCALAR = new GraphQLScalarType("CustomScalar", "CustomScalar", new Coercing() {
-        @Override
-        Object serialize(Object dataFetcherResult) {
-            throw new UnsupportedOperationException("Not implemented")
-        }
+    static GraphQLScalarType CUSTOM_SCALAR = GraphQLScalarType
+            .newScalar()
+            .name("CustomScalar")
+            .description("CustomScalar")
+            .coercing(new Coercing() {
+                @Override
+                Object serialize(Object dataFetcherResult) {
+                    throw new UnsupportedOperationException("Not implemented")
+                }
 
-        @Override
-        Object parseValue(Object input) {
-            throw new UnsupportedOperationException("Not implemented")
-        }
+                @Override
+                Object parseValue(Object input) {
+                    throw new UnsupportedOperationException("Not implemented")
+                }
 
-        @Override
-        Object parseLiteral(Object input) {
-            throw new UnsupportedOperationException("Not implemented")
-        }
-    })
+                @Override
+                Object parseLiteral(Object input) {
+                    throw new UnsupportedOperationException("Not implemented")
+                }
+            })
+            .build()
 
     static RuntimeWiring wireWithNoFetching() {
 
@@ -462,21 +467,34 @@ class SchemaDiffTest extends Specification {
         reporter.dangerCount == 3
 
         reporter.dangers[0].category == DiffCategory.ADDITION
-        reporter.dangers[0].typeName == "Character"
-        reporter.dangers[0].typeKind == TypeKind.Union
-        reporter.dangers[0].components.contains("BenignFigure")
+        reporter.dangers[0].typeName == "Temperament"
+        reporter.dangers[0].typeKind == TypeKind.Enum
+        reporter.dangers[0].components.contains("Nonplussed")
 
-        reporter.dangers[1].category == DiffCategory.DIFFERENT
-        reporter.dangers[1].typeName == "Query"
-        reporter.dangers[1].typeKind == TypeKind.Object
-        reporter.dangers[1].fieldName == "being"
-        reporter.dangers[1].components.contains("type")
+        reporter.dangers[1].category == DiffCategory.ADDITION
+        reporter.dangers[1].typeName == "Character"
+        reporter.dangers[1].typeKind == TypeKind.Union
+        reporter.dangers[1].components.contains("BenignFigure")
 
-        reporter.dangers[2].category == DiffCategory.ADDITION
-        reporter.dangers[2].typeName == "Temperament"
-        reporter.dangers[2].typeKind == TypeKind.Enum
-        reporter.dangers[2].components.contains("Nonplussed")
+        reporter.dangers[2].category == DiffCategory.DIFFERENT
+        reporter.dangers[2].typeName == "Query"
+        reporter.dangers[2].typeKind == TypeKind.Object
+        reporter.dangers[2].fieldName == "being"
+        reporter.dangers[2].components.contains("type")
 
+
+    }
+
+    def "deprecated fields are unchanged"() {
+        def schema = TestUtil.schemaFile("diff/" + "schema_deprecated_fields_new.graphqls", wireWithNoFetching())
+        DiffSet diffSet = DiffSet.diffSet(schema, schema)
+
+        def diff = new SchemaDiff()
+        diff.diffSchema(diffSet, chainedReporter)
+
+        expect:
+        reporter.dangerCount == 0
+        reporter.breakageCount == 0
     }
 
     def "field was deprecated"() {
@@ -511,4 +529,66 @@ class SchemaDiffTest extends Specification {
         }
     }
 
+    def "union members are checked"() {
+        def oldSchema = TestUtil.schema('''
+        type Query {
+            foo: Foo
+        }
+        union Foo = A | B 
+        type A {
+            a: String
+            toRemove: String 
+        }
+        type B {
+            b: String
+        }
+       ''')
+        def newSchema = TestUtil.schema('''
+        type Query {
+            foo: Foo
+        }
+        union Foo = A | B 
+        type A {
+            a: String
+        }
+        type B {
+            b: String
+        }
+       ''')
+        def reporter = new CapturingReporter()
+        DiffSet diffSet = DiffSet.diffSet(oldSchema, newSchema)
+        def diff = new SchemaDiff()
+        when:
+        diff.diffSchema(diffSet, reporter)
+
+        then:
+        reporter.dangerCount == 0
+        reporter.breakageCount == 1
+        reporter.breakages.every {
+            it.getCategory() == DiffCategory.MISSING
+        }
+
+    }
+
+    def "SchemaDiff and CapturingReporter have the same diff counts"() {
+        def schema1 = TestUtil.schema("type Query { f : String }")
+        def schema2 = TestUtil.schema("type Query { f : Int }")
+
+        when:
+        def capturingReporter = new CapturingReporter()
+        def schemaDiff = new SchemaDiff()
+        def breakingCount = schemaDiff.diffSchema(DiffSet.diffSet(schema1, schema1), capturingReporter)
+        then:
+        breakingCount == capturingReporter.getBreakageCount()
+        breakingCount == 0
+
+        when:
+        capturingReporter = new CapturingReporter()
+        schemaDiff = new SchemaDiff()
+        breakingCount = schemaDiff.diffSchema(DiffSet.diffSet(schema1, schema2), capturingReporter)
+
+        then:
+        breakingCount == capturingReporter.getBreakageCount()
+        breakingCount == 1
+    }
 }

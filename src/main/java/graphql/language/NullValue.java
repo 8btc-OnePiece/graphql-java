@@ -1,36 +1,38 @@
 package graphql.language;
 
 
+import com.google.common.collect.ImmutableList;
 import graphql.Internal;
 import graphql.PublicApi;
+import graphql.collect.ImmutableKit;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
+import static graphql.collect.ImmutableKit.emptyList;
 import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
 import static graphql.language.NodeUtil.assertNewChildrenAreEmpty;
-import static java.util.Collections.emptyMap;
 
 @PublicApi
 public class NullValue extends AbstractNode<NullValue> implements Value<NullValue> {
-
-    public static final NullValue Null = new NullValue(null, Collections.emptyList(), IgnoredChars.EMPTY, emptyMap());
 
     @Internal
     protected NullValue(SourceLocation sourceLocation, List<Comment> comments, IgnoredChars ignoredChars, Map<String, String> additionalData) {
         super(sourceLocation, comments, ignoredChars, additionalData);
     }
 
+    public static NullValue of() {
+        return NullValue.newNullValue().build();
+    }
+
     @Override
     public List<Node> getChildren() {
-        return Collections.emptyList();
+        return ImmutableKit.emptyList();
     }
 
     @Override
@@ -86,13 +88,13 @@ public class NullValue extends AbstractNode<NullValue> implements Value<NullValu
 
     public static final class Builder implements NodeBuilder {
         private SourceLocation sourceLocation;
-        private List<Comment> comments = new ArrayList<>();
+        private ImmutableList<Comment> comments = emptyList();
         private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
         private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder(NullValue existing) {
             this.sourceLocation = existing.getSourceLocation();
-            this.comments = existing.getComments();
+            this.comments = ImmutableList.copyOf(existing.getComments());
             this.ignoredChars = existing.getIgnoredChars();
             this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
@@ -106,7 +108,7 @@ public class NullValue extends AbstractNode<NullValue> implements Value<NullValu
         }
 
         public Builder comments(List<Comment> comments) {
-            this.comments = comments;
+            this.comments = ImmutableList.copyOf(comments);
             return this;
         }
 

@@ -1,6 +1,7 @@
 package graphql.execution.instrumentation.parameters;
 
 import graphql.ExecutionInput;
+import graphql.PublicApi;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationState;
 import graphql.language.Document;
@@ -9,6 +10,7 @@ import graphql.schema.GraphQLSchema;
 /**
  * Parameters sent to {@link Instrumentation} methods
  */
+@PublicApi
 public class InstrumentationValidationParameters extends InstrumentationExecutionParameters {
     private final Document document;
 
@@ -23,7 +25,10 @@ public class InstrumentationValidationParameters extends InstrumentationExecutio
      * @param instrumentationState the new state for this parameters object
      *
      * @return a new parameters object with the new state
+     *
+     * @deprecated state is now passed in direct to instrumentation methods
      */
+    @Deprecated
     @Override
     public InstrumentationValidationParameters withNewState(InstrumentationState instrumentationState) {
         return new InstrumentationValidationParameters(

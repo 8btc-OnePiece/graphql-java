@@ -1,10 +1,10 @@
 package graphql.schema;
 
 import graphql.PublicApi;
+import graphql.collect.ImmutableKit;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
-import java.util.Collections;
 import java.util.List;
 
 import static graphql.schema.SchemaElementChildrenContainer.newSchemaElementChildrenContainer;
@@ -17,7 +17,7 @@ import static graphql.schema.SchemaElementChildrenContainer.newSchemaElementChil
 public interface GraphQLSchemaElement {
 
     default List<GraphQLSchemaElement> getChildren() {
-        return Collections.emptyList();
+        return ImmutableKit.emptyList();
     }
 
     default SchemaElementChildrenContainer getChildrenWithTypeReferences() {
@@ -29,4 +29,32 @@ public interface GraphQLSchemaElement {
     }
 
     TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor);
+
+
+    /**
+     * No GraphQLSchemaElement implements `equals` because we need object identity
+     * to treat a GraphQLSchema as an abstract graph.
+     *
+     * @param obj the reference object with which to compare.
+     *
+     * @return {@code true} if this object is the same as the obj
+     * argument; {@code false} otherwise.
+     */
+    boolean equals(Object obj);
+
+    /**
+     * No GraphQLSchemaElement implements `equals/hashCode` because we need object identity
+     * to treat a GraphQLSchema as an abstract graph.
+     *
+     * @return a hash code value for this object.
+     */
+    int hashCode();
+
+    /**
+     * Each GraphQLSchemaElement should make a copy of itself when this is called.  The copy should
+     * be included its current contents as they currently exist into a new object.
+     *
+     * @return a copy of this element
+     */
+    GraphQLSchemaElement copy();
 }

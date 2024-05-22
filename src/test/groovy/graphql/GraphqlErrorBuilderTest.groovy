@@ -1,6 +1,6 @@
 package graphql
 
-import graphql.execution.ExecutionPath
+import graphql.execution.ResultPath
 import graphql.language.SourceLocation
 import graphql.schema.DataFetcher
 import graphql.schema.DataFetchingEnvironment
@@ -15,7 +15,7 @@ import static graphql.language.Field.newField
 class GraphqlErrorBuilderTest extends Specification {
     def location = new SourceLocation(6, 9)
     def field = newMergedField(newField("f").sourceLocation(location).build()).build()
-    def stepInfo = newExecutionStepInfo().path(ExecutionPath.fromList(["a", "b"])).type(GraphQLString).build()
+    def stepInfo = newExecutionStepInfo().path(ResultPath.fromList(["a", "b"])).type(GraphQLString).build()
 
     def "dfe is passed on"() {
         DataFetchingEnvironment dfe = DataFetchingEnvironmentImpl.newDataFetchingEnvironment()
@@ -37,6 +37,19 @@ class GraphqlErrorBuilderTest extends Specification {
         then:
         graphQLError.getMessage() == "Gunfight at the NotOK corral"
         graphQLError.getErrorType() == ErrorType.DataFetchingException
+    }
+
+    def "builder getters work"() {
+        when:
+        def errorBuilder = GraphqlErrorBuilder.newError()
+                .message("Gunfight at the %s corral", "NotOK")
+                .location(location)
+                .path(["a","b"])
+        then:
+        errorBuilder.getMessage() == "Gunfight at the NotOK corral"
+        errorBuilder.getErrorType() == ErrorType.DataFetchingException
+        errorBuilder.getPath() == ["a","b"]
+        errorBuilder.getLocations() == [location]
     }
 
     def "data fetcher result building works"() {
@@ -109,5 +122,19 @@ class GraphqlErrorBuilderTest extends Specification {
         GraphqlErrorBuilder.newError().message(null).build()
         then:
         thrown(AssertException)
+    }
+
+    def "can have nullable attributes"() {
+        when:
+        def error = GraphqlErrorBuilder.newError().message("msg")
+                .locations(null)
+                .extensions(null)
+                .path(null)
+                .build()
+        then:
+        error.message == "msg"
+        error.locations == null
+        error.path == null
+        error.extensions == null
     }
 }

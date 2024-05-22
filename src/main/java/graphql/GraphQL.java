@@ -4,10 +4,12 @@ import graphql.cachecontrol.CacheControl;
 import graphql.execution.AbortExecutionException;
 import graphql.execution.AsyncExecutionStrategy;
 import graphql.execution.AsyncSerialExecutionStrategy;
+import graphql.execution.DataFetcherExceptionHandler;
 import graphql.execution.Execution;
 import graphql.execution.ExecutionId;
 import graphql.execution.ExecutionIdProvider;
 import graphql.execution.ExecutionStrategy;
+import graphql.execution.SimpleDataFetcherExceptionHandler;
 import graphql.execution.SubscriptionExecutionStrategy;
 import graphql.execution.ValueUnboxer;
 import graphql.execution.instrumentation.ChainedInstrumentation;
@@ -15,6 +17,7 @@ import graphql.execution.instrumentation.DocumentAndVariables;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationContext;
 import graphql.execution.instrumentation.InstrumentationState;
+import graphql.execution.instrumentation.NoContextChainedInstrumentation;
 import graphql.execution.instrumentation.SimpleInstrumentation;
 import graphql.execution.instrumentation.dataloader.DataLoaderDispatcherInstrumentation;
 import graphql.execution.instrumentation.parameters.InstrumentationCreateStateParameters;
@@ -24,27 +27,29 @@ import graphql.execution.preparsed.NoOpPreparsedDocumentProvider;
 import graphql.execution.preparsed.PreparsedDocumentEntry;
 import graphql.execution.preparsed.PreparsedDocumentProvider;
 import graphql.language.Document;
-import graphql.parser.InvalidSyntaxException;
-import graphql.parser.Parser;
 import graphql.schema.GraphQLSchema;
 import graphql.util.LogKit;
 import graphql.validation.ValidationError;
-import graphql.validation.Validator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 import static graphql.Assert.assertNotNull;
 import static graphql.execution.ExecutionIdProvider.DEFAULT_EXECUTION_ID_PROVIDER;
+import static graphql.execution.instrumentation.SimpleInstrumentationContext.completeInstrumentationCtxCF;
+import static graphql.execution.instrumentation.SimpleInstrumentationContext.nonNullCtx;
 import static graphql.execution.instrumentation.DocumentAndVariables.newDocumentAndVariables;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
@@ -52,15 +57,15 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
  * This class is where all graphql-java query execution begins.  It combines the objects that are needed
  * to make a successful graphql query, with the most important being the {@link graphql.schema.GraphQLSchema schema}
  * and the {@link graphql.execution.ExecutionStrategy execution strategy}
- *
+ * <p>
  * Building this object is very cheap and can be done on each execution if necessary.  Building the schema is often not
- * as cheap, especially if its parsed from graphql IDL schema format via {@link graphql.schema.idl.SchemaParser}.
- *
+ * as cheap, especially if it's parsed from graphql IDL schema format via {@link graphql.schema.idl.SchemaParser}.
+ * <p>
  * The data for a query is returned via {@link ExecutionResult#getData()} and any errors encountered as placed in
  * {@link ExecutionResult#getErrors()}.
  *
  * <h2>Runtime Exceptions</h2>
- *
+ * <p>
  * Runtime exceptions can be thrown by the graphql engine if certain situations are encountered.  These are not errors
  * in execution but rather totally unacceptable conditions in which to execute a graphql query.
  * <ul>
@@ -89,16 +94,8 @@ import static java.util.concurrent.CompletableFuture.completedFuture;
 @PublicApi
 public class GraphQL {
 
-    /**
-     * When @defer directives are used, this is the extension key name used to contain the {@link org.reactivestreams.Publisher}
-     * of deferred results
-     */
-    public static final String DEFERRED_RESULTS = "deferredResults";
-
     private static final Logger log = LoggerFactory.getLogger(GraphQL.class);
     private static final Logger logNotSafe = LogKit.getNotPrivacySafeLogger(GraphQL.class);
-
-    private final static Instrumentation DEFAULT_INSTRUMENTATION = new DataLoaderDispatcherInstrumentation();
 
     private final GraphQLSchema graphQLSchema;
     private final ExecutionStrategy queryStrategy;
@@ -110,82 +107,71 @@ public class GraphQL {
     private final ValueUnboxer valueUnboxer;
 
 
-    /**
-     * A GraphQL object ready to execute queries
-     *
-     * @param graphQLSchema the schema to use
-     *
-     * @deprecated use the {@link #newGraphQL(GraphQLSchema)} builder instead.  This will be removed in a future version.
-     */
-    @Internal
-    @Deprecated
-    public GraphQL(GraphQLSchema graphQLSchema) {
-        //noinspection deprecation
-        this(graphQLSchema, null, null);
+    private GraphQL(Builder builder) {
+        this.graphQLSchema = assertNotNull(builder.graphQLSchema, () -> "graphQLSchema must be non null");
+        this.queryStrategy = assertNotNull(builder.queryExecutionStrategy, () -> "queryStrategy must not be null");
+        this.mutationStrategy = assertNotNull(builder.mutationExecutionStrategy, () -> "mutationStrategy must not be null");
+        this.subscriptionStrategy = assertNotNull(builder.subscriptionExecutionStrategy, () -> "subscriptionStrategy must not be null");
+        this.idProvider = assertNotNull(builder.idProvider, () -> "idProvider must be non null");
+        this.instrumentation = assertNotNull(builder.instrumentation, () -> "instrumentation must not be null");
+        this.preparsedDocumentProvider = assertNotNull(builder.preparsedDocumentProvider, () -> "preparsedDocumentProvider must be non null");
+        this.valueUnboxer = assertNotNull(builder.valueUnboxer, () -> "valueUnboxer must not be null");
     }
 
     /**
-     * A GraphQL object ready to execute queries
-     *
-     * @param graphQLSchema the schema to use
-     * @param queryStrategy the query execution strategy to use
-     *
-     * @deprecated use the {@link #newGraphQL(GraphQLSchema)} builder instead.  This will be removed in a future version.
+     * @return the schema backing this {@link GraphQL} instance
      */
-    @Internal
-    @Deprecated
-    public GraphQL(GraphQLSchema graphQLSchema, ExecutionStrategy queryStrategy) {
-        //noinspection deprecation
-        this(graphQLSchema, queryStrategy, null);
+    public GraphQLSchema getGraphQLSchema() {
+        return graphQLSchema;
     }
 
     /**
-     * A GraphQL object ready to execute queries
-     *
-     * @param graphQLSchema    the schema to use
-     * @param queryStrategy    the query execution strategy to use
-     * @param mutationStrategy the mutation execution strategy to use
-     *
-     * @deprecated use the {@link #newGraphQL(GraphQLSchema)} builder instead.  This will be removed in a future version.
+     * @return the execution strategy used for queries in this {@link GraphQL} instance
      */
-    @Internal
-    @Deprecated
-    public GraphQL(GraphQLSchema graphQLSchema, ExecutionStrategy queryStrategy, ExecutionStrategy mutationStrategy) {
-        this(graphQLSchema, queryStrategy, mutationStrategy, null, DEFAULT_EXECUTION_ID_PROVIDER, DEFAULT_INSTRUMENTATION, NoOpPreparsedDocumentProvider.INSTANCE, ValueUnboxer.DEFAULT);
+    public ExecutionStrategy getQueryStrategy() {
+        return queryStrategy;
     }
 
     /**
-     * A GraphQL object ready to execute queries
-     *
-     * @param graphQLSchema        the schema to use
-     * @param queryStrategy        the query execution strategy to use
-     * @param mutationStrategy     the mutation execution strategy to use
-     * @param subscriptionStrategy the subscription execution strategy to use
-     *
-     * @deprecated use the {@link #newGraphQL(GraphQLSchema)} builder instead.  This will be removed in a future version.
+     * @return the execution strategy used for mutation in this {@link GraphQL} instance
      */
-    @Internal
-    @Deprecated
-    public GraphQL(GraphQLSchema graphQLSchema, ExecutionStrategy queryStrategy, ExecutionStrategy mutationStrategy, ExecutionStrategy subscriptionStrategy) {
-        this(graphQLSchema, queryStrategy, mutationStrategy, subscriptionStrategy, DEFAULT_EXECUTION_ID_PROVIDER, DEFAULT_INSTRUMENTATION, NoOpPreparsedDocumentProvider.INSTANCE, ValueUnboxer.DEFAULT);
+    public ExecutionStrategy getMutationStrategy() {
+        return mutationStrategy;
     }
 
-    private GraphQL(GraphQLSchema graphQLSchema,
-                    ExecutionStrategy queryStrategy,
-                    ExecutionStrategy mutationStrategy,
-                    ExecutionStrategy subscriptionStrategy,
-                    ExecutionIdProvider idProvider,
-                    Instrumentation instrumentation,
-                    PreparsedDocumentProvider preparsedDocumentProvider,
-                    ValueUnboxer valueUnboxer) {
-        this.graphQLSchema = assertNotNull(graphQLSchema, "graphQLSchema must be non null");
-        this.queryStrategy = queryStrategy != null ? queryStrategy : new AsyncExecutionStrategy();
-        this.mutationStrategy = mutationStrategy != null ? mutationStrategy : new AsyncSerialExecutionStrategy();
-        this.subscriptionStrategy = subscriptionStrategy != null ? subscriptionStrategy : new SubscriptionExecutionStrategy();
-        this.idProvider = assertNotNull(idProvider, "idProvider must be non null");
-        this.instrumentation = assertNotNull(instrumentation);
-        this.preparsedDocumentProvider = assertNotNull(preparsedDocumentProvider, "preparsedDocumentProvider must be non null");
-        this.valueUnboxer = valueUnboxer;
+    /**
+     * @return the execution strategy used for subscriptions in this {@link GraphQL} instance
+     */
+    public ExecutionStrategy getSubscriptionStrategy() {
+        return subscriptionStrategy;
+    }
+
+    /**
+     * @return the provider of execution ids for this {@link GraphQL} instance
+     */
+    public ExecutionIdProvider getIdProvider() {
+        return idProvider;
+    }
+
+    /**
+     * @return the Instrumentation for this {@link GraphQL} instance, if any
+     */
+    public Instrumentation getInstrumentation() {
+        return instrumentation;
+    }
+
+    /**
+     * @return the PreparsedDocumentProvider for this {@link GraphQL} instance
+     */
+    public PreparsedDocumentProvider getPreparsedDocumentProvider() {
+        return preparsedDocumentProvider;
+    }
+
+    /**
+     * @return the ValueUnboxer for this {@link GraphQL} instance
+     */
+    public ValueUnboxer getValueUnboxer() {
+        return valueUnboxer;
     }
 
     /**
@@ -210,28 +196,25 @@ public class GraphQL {
     public GraphQL transform(Consumer<GraphQL.Builder> builderConsumer) {
         Builder builder = new Builder(this.graphQLSchema);
         builder
-                .queryExecutionStrategy(nvl(this.queryStrategy, builder.queryExecutionStrategy))
-                .mutationExecutionStrategy(nvl(this.mutationStrategy, builder.mutationExecutionStrategy))
-                .subscriptionExecutionStrategy(nvl(this.subscriptionStrategy, builder.subscriptionExecutionStrategy))
-                .executionIdProvider(nvl(this.idProvider, builder.idProvider))
-                .instrumentation(nvl(this.instrumentation, builder.instrumentation))
-                .preparsedDocumentProvider(nvl(this.preparsedDocumentProvider, builder.preparsedDocumentProvider));
+                .queryExecutionStrategy(this.queryStrategy)
+                .mutationExecutionStrategy(this.mutationStrategy)
+                .subscriptionExecutionStrategy(this.subscriptionStrategy)
+                .executionIdProvider(Optional.ofNullable(this.idProvider).orElse(builder.idProvider))
+                .instrumentation(Optional.ofNullable(this.instrumentation).orElse(builder.instrumentation))
+                .preparsedDocumentProvider(Optional.ofNullable(this.preparsedDocumentProvider).orElse(builder.preparsedDocumentProvider));
 
         builderConsumer.accept(builder);
 
         return builder.build();
     }
 
-    private static <T> T nvl(T obj, T elseObj) {
-        return obj == null ? elseObj : obj;
-    }
-
     @PublicApi
     public static class Builder {
         private GraphQLSchema graphQLSchema;
-        private ExecutionStrategy queryExecutionStrategy = new AsyncExecutionStrategy();
-        private ExecutionStrategy mutationExecutionStrategy = new AsyncSerialExecutionStrategy();
-        private ExecutionStrategy subscriptionExecutionStrategy = new SubscriptionExecutionStrategy();
+        private ExecutionStrategy queryExecutionStrategy;
+        private ExecutionStrategy mutationExecutionStrategy;
+        private ExecutionStrategy subscriptionExecutionStrategy;
+        private DataFetcherExceptionHandler defaultExceptionHandler = new SimpleDataFetcherExceptionHandler();
         private ExecutionIdProvider idProvider = DEFAULT_EXECUTION_ID_PROVIDER;
         private Instrumentation instrumentation = null; // deliberate default here
         private PreparsedDocumentProvider preparsedDocumentProvider = NoOpPreparsedDocumentProvider.INSTANCE;
@@ -244,37 +227,50 @@ public class GraphQL {
         }
 
         public Builder schema(GraphQLSchema graphQLSchema) {
-            this.graphQLSchema = assertNotNull(graphQLSchema, "GraphQLSchema must be non null");
+            this.graphQLSchema = assertNotNull(graphQLSchema, () -> "GraphQLSchema must be non null");
             return this;
         }
 
         public Builder queryExecutionStrategy(ExecutionStrategy executionStrategy) {
-            this.queryExecutionStrategy = assertNotNull(executionStrategy, "Query ExecutionStrategy must be non null");
+            this.queryExecutionStrategy = assertNotNull(executionStrategy, () -> "Query ExecutionStrategy must be non null");
             return this;
         }
 
         public Builder mutationExecutionStrategy(ExecutionStrategy executionStrategy) {
-            this.mutationExecutionStrategy = assertNotNull(executionStrategy, "Mutation ExecutionStrategy must be non null");
+            this.mutationExecutionStrategy = assertNotNull(executionStrategy, () -> "Mutation ExecutionStrategy must be non null");
             return this;
         }
 
         public Builder subscriptionExecutionStrategy(ExecutionStrategy executionStrategy) {
-            this.subscriptionExecutionStrategy = assertNotNull(executionStrategy, "Subscription ExecutionStrategy must be non null");
+            this.subscriptionExecutionStrategy = assertNotNull(executionStrategy, () -> "Subscription ExecutionStrategy must be non null");
+            return this;
+        }
+
+        /**
+         * This allows you to set a default {@link graphql.execution.DataFetcherExceptionHandler} that will be used to handle exceptions that happen
+         * in {@link graphql.schema.DataFetcher} invocations.
+         *
+         * @param dataFetcherExceptionHandler the default handler for data fetching exception
+         *
+         * @return this builder
+         */
+        public Builder defaultDataFetcherExceptionHandler(DataFetcherExceptionHandler dataFetcherExceptionHandler) {
+            this.defaultExceptionHandler = assertNotNull(dataFetcherExceptionHandler, () -> "The DataFetcherExceptionHandler must be non null");
             return this;
         }
 
         public Builder instrumentation(Instrumentation instrumentation) {
-            this.instrumentation = assertNotNull(instrumentation, "Instrumentation must be non null");
+            this.instrumentation = assertNotNull(instrumentation, () -> "Instrumentation must be non null");
             return this;
         }
 
         public Builder preparsedDocumentProvider(PreparsedDocumentProvider preparsedDocumentProvider) {
-            this.preparsedDocumentProvider = assertNotNull(preparsedDocumentProvider, "PreparsedDocumentProvider must be non null");
+            this.preparsedDocumentProvider = assertNotNull(preparsedDocumentProvider, () -> "PreparsedDocumentProvider must be non null");
             return this;
         }
 
         public Builder executionIdProvider(ExecutionIdProvider executionIdProvider) {
-            this.idProvider = assertNotNull(executionIdProvider, "ExecutionIdProvider must be non null");
+            this.idProvider = assertNotNull(executionIdProvider, () -> "ExecutionIdProvider must be non null");
             return this;
         }
 
@@ -301,11 +297,19 @@ public class GraphQL {
         }
 
         public GraphQL build() {
-            assertNotNull(graphQLSchema, "graphQLSchema must be non null");
-            assertNotNull(queryExecutionStrategy, "queryStrategy must be non null");
-            assertNotNull(idProvider, "idProvider must be non null");
-            final Instrumentation augmentedInstrumentation = checkInstrumentationDefaultState(instrumentation, doNotAddDefaultInstrumentations);
-            return new GraphQL(graphQLSchema, queryExecutionStrategy, mutationExecutionStrategy, subscriptionExecutionStrategy, idProvider, augmentedInstrumentation, preparsedDocumentProvider, valueUnboxer);
+            // we use the data fetcher exception handler unless they set their own strategy in which case bets are off
+            if (queryExecutionStrategy == null) {
+                this.queryExecutionStrategy = new AsyncExecutionStrategy(this.defaultExceptionHandler);
+            }
+            if (mutationExecutionStrategy == null) {
+                this.mutationExecutionStrategy = new AsyncSerialExecutionStrategy(this.defaultExceptionHandler);
+            }
+            if (subscriptionExecutionStrategy == null) {
+                this.subscriptionExecutionStrategy = new SubscriptionExecutionStrategy(this.defaultExceptionHandler);
+            }
+
+            this.instrumentation = checkInstrumentationDefaultState(this.instrumentation, this.doNotAddDefaultInstrumentations);
+            return new GraphQL(this);
         }
     }
 
@@ -506,27 +510,30 @@ public class GraphQL {
      */
     public CompletableFuture<ExecutionResult> executeAsync(ExecutionInput executionInput) {
         try {
-            logNotSafe.debug("Executing request. operation name: '{}'. query: '{}'. variables '{}'", executionInput.getOperationName(), executionInput.getQuery(), executionInput.getVariables());
+            if (logNotSafe.isDebugEnabled()) {
+                logNotSafe.debug("Executing request. operation name: '{}'. query: '{}'. variables '{}'", executionInput.getOperationName(), executionInput.getQuery(), executionInput.getVariables());
+            }
             executionInput = ensureInputHasId(executionInput);
 
             InstrumentationState instrumentationState = instrumentation.createState(new InstrumentationCreateStateParameters(this.graphQLSchema, executionInput));
 
             InstrumentationExecutionParameters inputInstrumentationParameters = new InstrumentationExecutionParameters(executionInput, this.graphQLSchema, instrumentationState);
-            executionInput = instrumentation.instrumentExecutionInput(executionInput, inputInstrumentationParameters);
+            executionInput = instrumentation.instrumentExecutionInput(executionInput, inputInstrumentationParameters, instrumentationState);
 
+            CompletableFuture<ExecutionResult> beginExecutionCF = new CompletableFuture<>();
             InstrumentationExecutionParameters instrumentationParameters = new InstrumentationExecutionParameters(executionInput, this.graphQLSchema, instrumentationState);
-            InstrumentationContext<ExecutionResult> executionInstrumentation = instrumentation.beginExecution(instrumentationParameters);
+            InstrumentationContext<ExecutionResult> executionInstrumentation = nonNullCtx(instrumentation.beginExecution(instrumentationParameters, instrumentationState));
+            executionInstrumentation.onDispatched(beginExecutionCF);
 
-            GraphQLSchema graphQLSchema = instrumentation.instrumentSchema(this.graphQLSchema, instrumentationParameters);
+            GraphQLSchema graphQLSchema = instrumentation.instrumentSchema(this.graphQLSchema, instrumentationParameters, instrumentationState);
 
             CompletableFuture<ExecutionResult> executionResult = parseValidateAndExecute(executionInput, graphQLSchema, instrumentationState);
             //
             // finish up instrumentation
-            executionResult = executionResult.whenComplete(executionInstrumentation::onCompleted);
+            executionResult = executionResult.whenComplete(completeInstrumentationCtxCF(executionInstrumentation, beginExecutionCF));
             //
             // allow instrumentation to tweak the result
-            CacheControl cacheControl = executionInput.getCacheControl();
-            executionResult = executionResult.thenCompose(result -> instrumentation.instrumentExecutionResult(cacheControl.addTo(result), instrumentationParameters));
+            executionResult = executionResult.thenCompose(result -> instrumentation.instrumentExecutionResult(result, instrumentationParameters, instrumentationState));
             return executionResult;
         } catch (AbortExecutionException abortException) {
             return completedFuture(abortException.toExecutionResult());
@@ -539,7 +546,7 @@ public class GraphQL {
         }
         String queryString = executionInput.getQuery();
         String operationName = executionInput.getOperationName();
-        Object context = executionInput.getContext();
+        Object context = executionInput.getGraphQLContext();
         return executionInput.transform(builder -> builder.executionId(idProvider.provide(queryString, operationName, context)));
     }
 
@@ -551,12 +558,17 @@ public class GraphQL {
             executionInputRef.set(transformedInput);
             return parseAndValidate(executionInputRef, graphQLSchema, instrumentationState);
         };
-        PreparsedDocumentEntry preparsedDoc = preparsedDocumentProvider.getDocument(executionInput, computeFunction);
-        if (preparsedDoc.hasErrors()) {
-            return completedFuture(new ExecutionResultImpl(preparsedDoc.getErrors()));
-        }
-
-        return execute(executionInputRef.get(), preparsedDoc.getDocument(), graphQLSchema, instrumentationState);
+        CompletableFuture<PreparsedDocumentEntry> preparsedDoc = preparsedDocumentProvider.getDocumentAsync(executionInput, computeFunction);
+        return preparsedDoc.thenCompose(preparsedDocumentEntry -> {
+            if (preparsedDocumentEntry.hasErrors()) {
+                return CompletableFuture.completedFuture(new ExecutionResultImpl(preparsedDocumentEntry.getErrors()));
+            }
+            try {
+                return execute(executionInputRef.get(), preparsedDocumentEntry.getDocument(), graphQLSchema, instrumentationState);
+            } catch (AbortExecutionException e) {
+                return CompletableFuture.completedFuture(e.toExecutionResult());
+            }
+        });
     }
 
     private PreparsedDocumentEntry parseAndValidate(AtomicReference<ExecutionInput> executionInputRef, GraphQLSchema graphQLSchema, InstrumentationState instrumentationState) {
@@ -564,56 +576,64 @@ public class GraphQL {
         ExecutionInput executionInput = executionInputRef.get();
         String query = executionInput.getQuery();
 
-        logNotSafe.debug("Parsing query: '{}'...", query);
-        ParseResult parseResult = parse(executionInput, graphQLSchema, instrumentationState);
+        if (logNotSafe.isDebugEnabled()) {
+            logNotSafe.debug("Parsing query: '{}'...", query);
+        }
+        ParseAndValidateResult parseResult = parse(executionInput, graphQLSchema, instrumentationState);
         if (parseResult.isFailure()) {
-            logNotSafe.warn("Query failed to parse : '{}'", executionInput.getQuery());
-            return new PreparsedDocumentEntry(parseResult.getException().toInvalidSyntaxError());
+            logNotSafe.warn("Query did not parse : '{}'", executionInput.getQuery());
+            return new PreparsedDocumentEntry(parseResult.getSyntaxException().toInvalidSyntaxError());
         } else {
             final Document document = parseResult.getDocument();
             // they may have changed the document and the variables via instrumentation so update the reference to it
             executionInput = executionInput.transform(builder -> builder.variables(parseResult.getVariables()));
             executionInputRef.set(executionInput);
 
-            logNotSafe.debug("Validating query: '{}'", query);
+            if (logNotSafe.isDebugEnabled()) {
+                logNotSafe.debug("Validating query: '{}'", query);
+            }
             final List<ValidationError> errors = validate(executionInput, document, graphQLSchema, instrumentationState);
             if (!errors.isEmpty()) {
-                logNotSafe.warn("Query failed to validate : '{}'", query);
-                return new PreparsedDocumentEntry(errors);
+                logNotSafe.warn("Query did not validate : '{}'", query);
+                return new PreparsedDocumentEntry(document, errors);
             }
 
             return new PreparsedDocumentEntry(document);
         }
     }
 
-    private ParseResult parse(ExecutionInput executionInput, GraphQLSchema graphQLSchema, InstrumentationState instrumentationState) {
+    private ParseAndValidateResult parse(ExecutionInput executionInput, GraphQLSchema graphQLSchema, InstrumentationState instrumentationState) {
         InstrumentationExecutionParameters parameters = new InstrumentationExecutionParameters(executionInput, graphQLSchema, instrumentationState);
-        InstrumentationContext<Document> parseInstrumentation = instrumentation.beginParse(parameters);
+        InstrumentationContext<Document> parseInstrumentationCtx = nonNullCtx(instrumentation.beginParse(parameters, instrumentationState));
+        CompletableFuture<Document> documentCF = new CompletableFuture<>();
+        parseInstrumentationCtx.onDispatched(documentCF);
 
-        Parser parser = new Parser();
-        Document document;
-        DocumentAndVariables documentAndVariables;
-        try {
-            document = parser.parseDocument(executionInput.getQuery());
-            documentAndVariables = newDocumentAndVariables()
-                    .document(document).variables(executionInput.getVariables()).build();
-            documentAndVariables = instrumentation.instrumentDocumentAndVariables(documentAndVariables, parameters);
-        } catch (InvalidSyntaxException e) {
-            parseInstrumentation.onCompleted(null, e);
-            return ParseResult.ofError(e);
+        ParseAndValidateResult parseResult = ParseAndValidate.parse(executionInput);
+        if (parseResult.isFailure()) {
+            parseInstrumentationCtx.onCompleted(null, parseResult.getSyntaxException());
+            return parseResult;
+        } else {
+            documentCF.complete(parseResult.getDocument());
+            parseInstrumentationCtx.onCompleted(parseResult.getDocument(), null);
+
+            DocumentAndVariables documentAndVariables = parseResult.getDocumentAndVariables();
+            documentAndVariables = instrumentation.instrumentDocumentAndVariables(documentAndVariables, parameters, instrumentationState);
+            return ParseAndValidateResult.newResult()
+                    .document(documentAndVariables.getDocument()).variables(documentAndVariables.getVariables()).build();
         }
-
-        parseInstrumentation.onCompleted(documentAndVariables.getDocument(), null);
-        return ParseResult.of(documentAndVariables);
     }
 
     private List<ValidationError> validate(ExecutionInput executionInput, Document document, GraphQLSchema graphQLSchema, InstrumentationState instrumentationState) {
-        InstrumentationContext<List<ValidationError>> validationCtx = instrumentation.beginValidation(new InstrumentationValidationParameters(executionInput, document, graphQLSchema, instrumentationState));
+        InstrumentationContext<List<ValidationError>> validationCtx = nonNullCtx(instrumentation.beginValidation(new InstrumentationValidationParameters(executionInput, document, graphQLSchema, instrumentationState), instrumentationState));
+        CompletableFuture<List<ValidationError>> cf = new CompletableFuture<>();
+        validationCtx.onDispatched(cf);
 
-        Validator validator = new Validator();
-        List<ValidationError> validationErrors = validator.validateDocument(graphQLSchema, document);
+        Predicate<Class<?>> validationRulePredicate = executionInput.getGraphQLContext().getOrDefault(ParseAndValidate.INTERNAL_VALIDATION_PREDICATE_HINT, r -> true);
+        Locale locale = executionInput.getLocale() != null ? executionInput.getLocale() : Locale.getDefault();
+        List<ValidationError> validationErrors = ParseAndValidate.validate(graphQLSchema, document, validationRulePredicate, locale);
 
         validationCtx.onCompleted(validationErrors, null);
+        cf.complete(validationErrors);
         return validationErrors;
     }
 
@@ -622,17 +642,21 @@ public class GraphQL {
         Execution execution = new Execution(queryStrategy, mutationStrategy, subscriptionStrategy, instrumentation, valueUnboxer);
         ExecutionId executionId = executionInput.getExecutionId();
 
-        logNotSafe.debug("Executing '{}'. operation name: '{}'. query: '{}'. variables '{}'", executionId, executionInput.getOperationName(), executionInput.getQuery(), executionInput.getVariables());
+        if (logNotSafe.isDebugEnabled()) {
+            logNotSafe.debug("Executing '{}'. operation name: '{}'. query: '{}'. variables '{}'", executionId, executionInput.getOperationName(), executionInput.getQuery(), executionInput.getVariables());
+        }
         CompletableFuture<ExecutionResult> future = execution.execute(document, graphQLSchema, executionId, executionInput, instrumentationState);
         future = future.whenComplete((result, throwable) -> {
             if (throwable != null) {
                 logNotSafe.error(String.format("Execution '%s' threw exception when executing : query : '%s'. variables '%s'", executionId, executionInput.getQuery(), executionInput.getVariables()), throwable);
             } else {
-                int errorCount = result.getErrors().size();
-                if (errorCount > 0) {
-                    log.debug("Execution '{}' completed with '{}' errors", executionId, errorCount);
-                } else {
-                    log.debug("Execution '{}' completed with zero errors", executionId);
+                if (log.isDebugEnabled()) {
+                    int errorCount = result.getErrors().size();
+                    if (errorCount > 0) {
+                        log.debug("Execution '{}' completed with '{}' errors", executionId, errorCount);
+                    } else {
+                        log.debug("Execution '{}' completed with zero errors", executionId);
+                    }
                 }
             }
         });
@@ -646,13 +670,16 @@ public class GraphQL {
         if (instrumentation instanceof DataLoaderDispatcherInstrumentation) {
             return instrumentation;
         }
+        if (instrumentation instanceof NoContextChainedInstrumentation) {
+            return instrumentation;
+        }
         if (instrumentation == null) {
             return new DataLoaderDispatcherInstrumentation();
         }
 
         //
         // if we don't have a DataLoaderDispatcherInstrumentation in play, we add one.  We want DataLoader to be 1st class in graphql without requiring
-        // people to remember to wire it in.  Later we may decide to have more default instrumentations but for now its just the one
+        // people to remember to wire it in.  Later we may decide to have more default instrumentations but for now it's just the one
         //
         List<Instrumentation> instrumentationList = new ArrayList<>();
         if (instrumentation instanceof ChainedInstrumentation) {

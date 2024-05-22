@@ -1,6 +1,9 @@
 package graphql.util;
 
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
 import graphql.Internal;
 
 import java.lang.reflect.Array;
@@ -10,14 +13,18 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static java.util.Collections.singletonList;
 import static java.util.function.Function.identity;
@@ -38,8 +45,8 @@ public class FpKit {
     }
 
     // normal groupingBy but with LinkedHashMap
-    public static <T, NewKey> Map<NewKey, List<T>> groupingBy(Collection<T> list, Function<T, NewKey> function) {
-        return list.stream().collect(Collectors.groupingBy(function, LinkedHashMap::new, mapping(Function.identity(), Collectors.toList())));
+    public static <T, NewKey> Map<NewKey, ImmutableList<T>> groupingBy(Collection<T> list, Function<T, NewKey> function) {
+        return list.stream().collect(Collectors.groupingBy(function, LinkedHashMap::new, mapping(Function.identity(), ImmutableList.toImmutableList())));
     }
 
     public static <T, NewKey> Map<NewKey, T> groupingByUniqueKey(Collection<T> list, Function<T, NewKey> keyFunction) {
@@ -56,7 +63,6 @@ public class FpKit {
             throw new IllegalStateException(String.format("Duplicate key %s", u));
         };
     }
-
 
 
     //
@@ -78,20 +84,14 @@ public class FpKit {
      *
      * @return an Iterable from that object
      *
-     * @throws java.lang.ClassCastException if its not an Iterable
+     * @throws java.lang.ClassCastException if it's not an Iterable
      */
     @SuppressWarnings("unchecked")
     public static <T> Collection<T> toCollection(Object iterableResult) {
-        if (iterableResult.getClass().isArray()) {
-            List<Object> collect = IntStream.range(0, Array.getLength(iterableResult))
-                    .mapToObj(i -> Array.get(iterableResult, i))
-                    .collect(Collectors.toList());
-            return (List<T>) collect;
-        }
         if (iterableResult instanceof Collection) {
             return (Collection<T>) iterableResult;
         }
-        Iterable<T> iterable = (Iterable<T>) iterableResult;
+        Iterable<T> iterable = toIterable(iterableResult);
         Iterator<T> iterator = iterable.iterator();
         List<T> list = new ArrayList<>();
         while (iterator.hasNext()) {
@@ -101,13 +101,99 @@ public class FpKit {
     }
 
     /**
+     * Converts a value into a list if it's really a collection or array of things
+     * else it turns it into a singleton list containing that one value
+     *
+     * @param possibleIterable the possible
+     * @param <T>              for two
+     *
+     * @return an list one way or another
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> List<T> toListOrSingletonList(Object possibleIterable) {
+        if (possibleIterable instanceof List) {
+            return (List<T>) possibleIterable;
+        }
+        if (isIterable(possibleIterable)) {
+            return ImmutableList.copyOf(toIterable(possibleIterable));
+        }
+        return ImmutableList.of((T) possibleIterable);
+    }
+
+    public static boolean isIterable(Object result) {
+        return result.getClass().isArray() || result instanceof Iterable || result instanceof Stream || result instanceof Iterator;
+    }
+
+
+    @SuppressWarnings("unchecked")
+    public static <T> Iterable<T> toIterable(Object iterableResult) {
+        if (iterableResult instanceof Iterable) {
+            return ((Iterable<T>) iterableResult);
+        }
+
+        if (iterableResult instanceof Stream) {
+            return ((Stream<T>) iterableResult)::iterator;
+        }
+
+        if (iterableResult instanceof Iterator) {
+            return () -> (Iterator<T>) iterableResult;
+        }
+
+        if (iterableResult.getClass().isArray()) {
+            return () -> new ArrayIterator<>(iterableResult);
+        }
+
+        throw new ClassCastException("not Iterable: " + iterableResult.getClass());
+    }
+
+    private static class ArrayIterator<T> implements Iterator<T> {
+
+        private final Object array;
+        private final int size;
+        private int i;
+
+        private ArrayIterator(Object array) {
+            this.array = array;
+            this.size = Array.getLength(array);
+            this.i = 0;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return i < size;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public T next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+            return (T) Array.get(array, i++);
+        }
+
+    }
+
+    public static OptionalInt toSize(Object iterableResult) {
+        if (iterableResult instanceof Collection) {
+            return OptionalInt.of(((Collection<?>) iterableResult).size());
+        }
+
+        if (iterableResult.getClass().isArray()) {
+            return OptionalInt.of(Array.getLength(iterableResult));
+        }
+
+        return OptionalInt.empty();
+    }
+
+    /**
      * Concatenates (appends) a single elements to an existing list
      *
      * @param l   the list onto which to append the element
      * @param t   the element to append
      * @param <T> the type of elements of the list
      *
-     * @return a <strong>new</strong> list componsed of the first list elements and the new element
+     * @return a <strong>new</strong> list composed of the first list elements and the new element
      */
     public static <T> List<T> concat(List<T> l, T t) {
         return concat(l, singletonList(t));
@@ -135,10 +221,6 @@ public class FpKit {
         return new ArrayList<>(map.values());
     }
 
-    public static <T, U> List<U> map(List<T> list, Function<T, U> function) {
-        return list.stream().map(function).collect(Collectors.toList());
-    }
-
     public static <K, V, U> List<U> mapEntries(Map<K, V> map, BiFunction<K, V, U> function) {
         return map.entrySet().stream().map(entry -> function.apply(entry.getKey(), entry.getValue())).collect(Collectors.toList());
     }
@@ -152,7 +234,7 @@ public class FpKit {
             for (int j = 0; j < colCount; j++) {
                 T val = matrix.get(i).get(j);
                 if (result.size() <= j) {
-                    result.add(j, new ArrayList());
+                    result.add(j, new ArrayList<>());
                 }
                 result.get(j).add(i, val);
             }
@@ -167,10 +249,10 @@ public class FpKit {
     public static <T> List<T> flatList(List<List<T>> listLists) {
         return listLists.stream()
                 .flatMap(List::stream)
-                .collect(Collectors.toList());
+                .collect(ImmutableList.toImmutableList());
     }
 
-    public static <T> Optional<T> findOne(List<T> list, Predicate<T> filter) {
+    public static <T> Optional<T> findOne(Collection<T> list, Predicate<T> filter) {
         return list
                 .stream()
                 .filter(filter)
@@ -190,5 +272,85 @@ public class FpKit {
         return -1;
     }
 
+    public static <T> List<T> filterList(Collection<T> list, Predicate<T> filter) {
+        return list
+                .stream()
+                .filter(filter)
+                .collect(Collectors.toList());
+    }
+
+    public static <T> Set<T> filterSet(Collection<T> input, Predicate<T> filter) {
+        ImmutableSet.Builder<T> result = ImmutableSet.builder();
+        for (T t : input) {
+            if (filter.test(t)) {
+                result.add(t);
+            }
+        }
+        return result.build();
+    }
+
+    /**
+     * Used in simple {@link Map#computeIfAbsent(Object, java.util.function.Function)} cases
+     *
+     * @param <K> for Key
+     * @param <V> for Value
+     *
+     * @return a function that allocates a list
+     */
+    public static <K, V> Function<K, List<V>> newList() {
+        return k -> new ArrayList<>();
+    }
+
+    /**
+     * This will memoize the Supplier within the current thread's visibility, that is it does not
+     * use volatile reads but rather use a sentinel check and re-reads the delegate supplier
+     * value if the read has not stuck to this thread.  This means that it's possible that your delegate
+     * supplier MAY be called more than once across threads, but only once on the same thread.
+     *
+     * @param delegate the supplier to delegate to
+     * @param <T>      for two
+     *
+     * @return a supplier that will memoize values in the context of the current thread
+     */
+    public static <T> Supplier<T> intraThreadMemoize(Supplier<T> delegate) {
+        return new IntraThreadMemoizedSupplier<>(delegate);
+    }
+
+    /**
+     * This will memoize the Supplier across threads and make sure the Supplier is exactly called once.
+     * <p>
+     * Use for potentially costly actions. Otherwise consider {@link #intraThreadMemoize(Supplier)}
+     *
+     * @param delegate the supplier to delegate to
+     * @param <T>      for two
+     *
+     * @return a supplier that will memoize values in the context of the all the threads
+     */
+    public static <T> Supplier<T> interThreadMemoize(Supplier<T> delegate) {
+        return new InterThreadMemoizedSupplier<>(delegate);
+    }
+
+    /**
+     * Faster set intersection.
+     *
+     * @param set1 first set
+     * @param set2 second set
+     * @return intersection set
+     */
+    public static <T> Set<T> intersection(Set<T> set1, Set<T> set2) {
+        // Set intersection calculation is expensive when either set is large. Often, either set has only one member.
+        // When either set contains only one member, it is equivalent and much cheaper to calculate intersection via contains.
+        if (set1.size() == 1 && set2.contains(set1.iterator().next())) {
+            return set1;
+        } else if (set2.size() == 1 && set1.contains(set2.iterator().next())) {
+            return set2;
+        }
+
+        // Guava's Sets.intersection is faster when the smaller set is passed as the first argument.
+        if (set1.size() < set2.size()) {
+            return Sets.intersection(set1, set2);
+        }
+        return Sets.intersection(set2, set1);
+    }
 
 }

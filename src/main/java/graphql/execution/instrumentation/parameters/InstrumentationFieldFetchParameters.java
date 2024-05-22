@@ -1,29 +1,30 @@
 package graphql.execution.instrumentation.parameters;
 
+import graphql.PublicApi;
 import graphql.execution.ExecutionContext;
 import graphql.execution.ExecutionStrategyParameters;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationState;
 import graphql.schema.DataFetchingEnvironment;
-import graphql.schema.GraphQLFieldDefinition;
 
 /**
  * Parameters sent to {@link Instrumentation} methods
  */
+@PublicApi
 public class InstrumentationFieldFetchParameters extends InstrumentationFieldParameters {
     private final DataFetchingEnvironment environment;
     private final ExecutionStrategyParameters executionStrategyParameters;
     private final boolean trivialDataFetcher;
 
-    public InstrumentationFieldFetchParameters(ExecutionContext getExecutionContext, GraphQLFieldDefinition fieldDef, DataFetchingEnvironment environment, ExecutionStrategyParameters executionStrategyParameters, boolean trivialDataFetcher) {
-        super(getExecutionContext, fieldDef, environment.getExecutionStepInfo());
+    public InstrumentationFieldFetchParameters(ExecutionContext getExecutionContext, DataFetchingEnvironment environment, ExecutionStrategyParameters executionStrategyParameters, boolean trivialDataFetcher) {
+        super(getExecutionContext, environment::getExecutionStepInfo);
         this.environment = environment;
         this.executionStrategyParameters = executionStrategyParameters;
         this.trivialDataFetcher = trivialDataFetcher;
     }
 
-    private InstrumentationFieldFetchParameters(ExecutionContext getExecutionContext, GraphQLFieldDefinition fieldDef, DataFetchingEnvironment environment, InstrumentationState instrumentationState, ExecutionStrategyParameters executionStrategyParameters, boolean trivialDataFetcher) {
-        super(getExecutionContext, fieldDef, environment.getExecutionStepInfo(), instrumentationState);
+    private InstrumentationFieldFetchParameters(ExecutionContext getExecutionContext, DataFetchingEnvironment environment, InstrumentationState instrumentationState, ExecutionStrategyParameters executionStrategyParameters, boolean trivialDataFetcher) {
+        super(getExecutionContext, environment::getExecutionStepInfo, instrumentationState);
         this.environment = environment;
         this.executionStrategyParameters = executionStrategyParameters;
         this.trivialDataFetcher = trivialDataFetcher;
@@ -35,11 +36,14 @@ public class InstrumentationFieldFetchParameters extends InstrumentationFieldPar
      * @param instrumentationState the new state for this parameters object
      *
      * @return a new parameters object with the new state
+     *
+     * @deprecated state is now passed in direct to instrumentation methods
      */
+    @Deprecated
     @Override
     public InstrumentationFieldFetchParameters withNewState(InstrumentationState instrumentationState) {
         return new InstrumentationFieldFetchParameters(
-                this.getExecutionContext(), this.getField(), this.getEnvironment(),
+                this.getExecutionContext(), this.getEnvironment(),
                 instrumentationState, executionStrategyParameters, trivialDataFetcher);
     }
 

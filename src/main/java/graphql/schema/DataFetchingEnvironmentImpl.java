@@ -1,8 +1,12 @@
 package graphql.schema;
 
 
+import com.google.common.collect.ImmutableMap;
+import graphql.GraphQLContext;
 import graphql.Internal;
 import graphql.cachecontrol.CacheControl;
+import graphql.collect.ImmutableKit;
+import graphql.collect.ImmutableMapWithNullValues;
 import graphql.execution.ExecutionContext;
 import graphql.execution.ExecutionId;
 import graphql.execution.ExecutionStepInfo;
@@ -12,14 +16,19 @@ import graphql.language.*;
 import org.dataloader.DataLoader;
 import org.dataloader.DataLoaderRegistry;
 
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.Supplier;
 import java.util.*;
 
 @SuppressWarnings({"unchecked", "TypeParameterUnusedInFormals"})
 @Internal
 public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     private final Object source;
-    private final Map<String, Object> arguments;
+    private final Supplier<Map<String, Object>> arguments;
     private final Object context;
+    private final GraphQLContext graphQLContext;
     private final Object localContext;
     private final Object root;
     private final GraphQLFieldDefinition fieldDefinition;
@@ -27,22 +36,23 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     private final GraphQLOutputType fieldType;
     private final GraphQLType parentType;
     private final GraphQLSchema graphQLSchema;
-    private final Map<String, FragmentDefinition> fragmentsByName;
+    private final ImmutableMap<String, FragmentDefinition> fragmentsByName;
     private final ExecutionId executionId;
     private final DataFetchingFieldSelectionSet selectionSet;
-    private final ExecutionStepInfo executionStepInfo;
+    private final Supplier<ExecutionStepInfo> executionStepInfo;
     private final DataLoaderRegistry dataLoaderRegistry;
     private final CacheControl cacheControl;
     private final Locale locale;
     private final OperationDefinition operationDefinition;
     private final Document document;
-    private final Map<String, Object> variables;
+    private final ImmutableMapWithNullValues<String, Object> variables;
     private final QueryDirectives queryDirectives;
 
     private DataFetchingEnvironmentImpl(Builder builder) {
         this.source = builder.source;
-        this.arguments = builder.arguments == null ? Collections.emptyMap() : builder.arguments;
+        this.arguments = builder.arguments == null ? ImmutableKit::emptyMap : builder.arguments;
         this.context = builder.context;
+        this.graphQLContext = builder.graphQLContext;
         this.localContext = builder.localContext;
         this.root = builder.root;
         this.fieldDefinition = builder.fieldDefinition;
@@ -50,7 +60,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         this.fieldType = builder.fieldType;
         this.parentType = builder.parentType;
         this.graphQLSchema = builder.graphQLSchema;
-        this.fragmentsByName = builder.fragmentsByName == null ? Collections.emptyMap() : builder.fragmentsByName;
+        this.fragmentsByName = builder.fragmentsByName == null ? ImmutableKit.emptyMap() : builder.fragmentsByName;
         this.executionId = builder.executionId;
         this.selectionSet = builder.selectionSet;
         this.executionStepInfo = builder.executionStepInfo;
@@ -59,7 +69,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         this.locale = builder.locale;
         this.operationDefinition = builder.operationDefinition;
         this.document = builder.document;
-        this.variables = builder.variables == null ? Collections.emptyMap() : builder.variables;
+        this.variables = builder.variables == null ? ImmutableMapWithNullValues.emptyMap() : builder.variables;
         this.queryDirectives = builder.queryDirectives;
     }
 
@@ -77,12 +87,12 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     public static Builder newDataFetchingEnvironment(ExecutionContext executionContext) {
         return new Builder()
                 .context(executionContext.getContext())
+                .graphQLContext(executionContext.getGraphQLContext())
                 .root(executionContext.getRoot())
                 .graphQLSchema(executionContext.getGraphQLSchema())
                 .fragmentsByName(executionContext.getFragmentsByName())
                 .dataLoaderRegistry(executionContext.getDataLoaderRegistry())
                 .cacheControl(executionContext.getCacheControl())
-                .locale(executionContext.getLocale())
                 .locale(executionContext.getLocale())
                 .document(executionContext.getDocument())
                 .operationDefinition(executionContext.getOperationDefinition())
@@ -97,27 +107,32 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
     @Override
     public Map<String, Object> getArguments() {
-        return arguments;
+        return ImmutableMapWithNullValues.copyOf(arguments.get());
     }
 
     @Override
     public boolean containsArgument(String name) {
-        return arguments.containsKey(name);
+        return arguments.get().containsKey(name);
     }
 
     @Override
     public <T> T getArgument(String name) {
-        return (T) arguments.get(name);
+        return (T) arguments.get().get(name);
     }
 
     @Override
     public <T> T getArgumentOrDefault(String name, T defaultValue) {
-        return (T) arguments.getOrDefault(name, defaultValue);
+        return (T) arguments.get().getOrDefault(name, defaultValue);
     }
 
     @Override
     public <T> T getContext() {
         return (T) context;
+    }
+
+    @Override
+    public GraphQLContext getGraphQlContext() {
+        return graphQLContext;
     }
 
     @Override
@@ -167,7 +182,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
     @Override
     public Map<String, FragmentDefinition> getFragmentsByName() {
-        return Collections.unmodifiableMap(fragmentsByName);
+        return fragmentsByName;
     }
 
     @Override
@@ -187,7 +202,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
     @Override
     public ExecutionStepInfo getExecutionStepInfo() {
-        return executionStepInfo;
+        return executionStepInfo.get();
     }
 
     @Override
@@ -201,6 +216,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     }
 
     @Override
+    @Deprecated
     public CacheControl getCacheControl() {
         return cacheControl;
     }
@@ -222,7 +238,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
     @Override
     public Map<String, Object> getVariables() {
-        return Collections.unmodifiableMap(variables);
+        return variables;
     }
 
     @Override
@@ -236,6 +252,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
         private Object source;
         private Object context;
+        private GraphQLContext graphQLContext;
         private Object localContext;
         private Object root;
         private GraphQLFieldDefinition fieldDefinition;
@@ -245,21 +262,22 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         private GraphQLSchema graphQLSchema;
         private ExecutionId executionId;
         private DataFetchingFieldSelectionSet selectionSet;
-        private ExecutionStepInfo executionStepInfo;
+        private Supplier<ExecutionStepInfo> executionStepInfo;
         private DataLoaderRegistry dataLoaderRegistry;
         private CacheControl cacheControl;
         private Locale locale;
         private OperationDefinition operationDefinition;
         private Document document;
-        private Map<String, Object> arguments;
-        private Map<String, FragmentDefinition> fragmentsByName;
-        private Map<String, Object> variables;
+        private Supplier<Map<String, Object>> arguments;
+        private ImmutableMap<String, FragmentDefinition> fragmentsByName;
+        private ImmutableMapWithNullValues<String, Object> variables;
         private QueryDirectives queryDirectives;
 
         public Builder(DataFetchingEnvironmentImpl env) {
             this.source = env.source;
             this.arguments = env.arguments;
             this.context = env.context;
+            this.graphQLContext = env.graphQLContext;
             this.localContext = env.localContext;
             this.root = env.root;
             this.fieldDefinition = env.fieldDefinition;
@@ -273,7 +291,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
             this.executionStepInfo = env.executionStepInfo;
             this.dataLoaderRegistry = env.dataLoaderRegistry;
             this.cacheControl = env.cacheControl;
-            this.localContext = env.locale;
+            this.locale = env.locale;
             this.operationDefinition = env.operationDefinition;
             this.document = env.document;
             this.variables = env.variables;
@@ -289,12 +307,22 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         }
 
         public Builder arguments(Map<String, Object> arguments) {
+            return arguments(() -> arguments);
+        }
+
+        public Builder arguments(Supplier<Map<String, Object>> arguments) {
             this.arguments = arguments;
             return this;
         }
 
+        @Deprecated
         public Builder context(Object context) {
             this.context = context;
+            return this;
+        }
+
+        public Builder graphQLContext(GraphQLContext context) {
+            this.graphQLContext = context;
             return this;
         }
 
@@ -334,7 +362,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         }
 
         public Builder fragmentsByName(Map<String, FragmentDefinition> fragmentsByName) {
-            this.fragmentsByName = fragmentsByName;
+            this.fragmentsByName = ImmutableMap.copyOf(fragmentsByName);
             return this;
         }
 
@@ -349,6 +377,10 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         }
 
         public Builder executionStepInfo(ExecutionStepInfo executionStepInfo) {
+            return executionStepInfo(() -> executionStepInfo);
+        }
+
+        public Builder executionStepInfo(Supplier<ExecutionStepInfo> executionStepInfo) {
             this.executionStepInfo = executionStepInfo;
             return this;
         }
@@ -358,6 +390,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
             return this;
         }
 
+        @Deprecated
         public Builder cacheControl(CacheControl cacheControl) {
             this.cacheControl = cacheControl;
             return this;
@@ -379,7 +412,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         }
 
         public Builder variables(Map<String, Object> variables) {
-            this.variables = variables;
+            this.variables = ImmutableMapWithNullValues.copyOf(variables);
             return this;
         }
 

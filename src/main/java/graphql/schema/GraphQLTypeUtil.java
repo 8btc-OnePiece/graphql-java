@@ -1,8 +1,13 @@
 package graphql.schema;
 
+import graphql.Assert;
 import graphql.PublicApi;
+import graphql.introspection.Introspection;
+import graphql.schema.idl.DirectiveInfo;
+import graphql.schema.idl.ScalarInfo;
 
 import java.util.Stack;
+import java.util.function.Predicate;
 
 import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertShouldNeverHappen;
@@ -21,6 +26,7 @@ public class GraphQLTypeUtil {
      * @return the type in graphql SDL format, eg [typeName!]!
      */
     public static String simplePrint(GraphQLType type) {
+        Assert.assertNotNull(type, () -> "type can't be null");
         StringBuilder sb = new StringBuilder();
         if (isNonNull(type)) {
             sb.append(simplePrint(unwrapOne(type)));
@@ -153,11 +159,11 @@ public class GraphQLTypeUtil {
     }
 
     /**
-     * Unwraps one layer of the type or just returns the type again if its not a wrapped type
+     * Unwraps one layer of the type or just returns the type again if it's not a wrapped type
      *
      * @param type the type to unwrapOne
      *
-     * @return the unwrapped type or the same type again if its not wrapped
+     * @return the unwrapped type or the same type again if it's not wrapped
      */
     public static GraphQLType unwrapOne(GraphQLType type) {
         if (isNonNull(type)) {
@@ -169,26 +175,80 @@ public class GraphQLTypeUtil {
     }
 
     /**
-     * Unwraps all layers of the type or just returns the type again if its not a wrapped type
+     * Unwraps one layer of the type or just returns the type again if it's not a wrapped type
+     * and then cast to the target type.
+     *
+     * @param type the type to unwrapOne
+     * @param <T>  for two
+     *
+     * @return the unwrapped type or the same type again if it's not wrapped
+     */
+    public static <T extends GraphQLType> T unwrapOneAs(GraphQLType type) {
+        //noinspection unchecked
+        return (T) unwrapOne(type);
+    }
+
+    /**
+     * Unwraps all layers of the type or just returns the type again if it's not a wrapped type
      *
      * @param type the type to unwrapOne
      *
      * @return the underlying type
      */
     public static GraphQLUnmodifiedType unwrapAll(GraphQLType type) {
+        return unwrapAllAs(type);
+    }
+
+    /**
+     * Unwraps all layers of the type or just returns the type again if it's not a wrapped type
+     * and then cast to the target type.
+     *
+     * @param type the type to unwrapOne
+     * @param <T>  for two
+     *
+     * @return the underlying type
+     */
+    public static <T extends GraphQLType> T unwrapAllAs(GraphQLType type) {
+        //noinspection unchecked
+        return (T) unwrapAllImpl(type);
+    }
+
+    private static GraphQLType unwrapAllImpl(GraphQLType type) {
         while (true) {
             if (isNotWrapped(type)) {
-                return (GraphQLUnmodifiedType) type;
+                return type;
             }
             type = unwrapOne(type);
         }
     }
 
+
+    /**
+     * Unwraps all non nullable layers of the type until it reaches a type that is not {@link GraphQLNonNull}
+     *
+     * @param type the type to unwrap
+     *
+     * @return the underlying type that is not {@link GraphQLNonNull}
+     */
     public static GraphQLType unwrapNonNull(GraphQLType type) {
         while (isNonNull(type)) {
             type = unwrapOne(type);
         }
         return type;
+    }
+
+    /**
+     * Unwraps all non nullable layers of the type until it reaches a type that is not {@link GraphQLNonNull}
+     * and then cast to the target type.
+     *
+     * @param type the type to unwrap
+     * @param <T>  for two
+     *
+     * @return the underlying type that is not {@link GraphQLNonNull}
+     */
+    public static <T extends GraphQLType> T unwrapNonNullAs(GraphQLType type) {
+        //noinspection unchecked
+        return (T) unwrapNonNull(type);
     }
 
     /**
@@ -201,7 +261,7 @@ public class GraphQLTypeUtil {
      * @return a stack of the type wrapping which will be at least 1 later deep
      */
     public static Stack<GraphQLType> unwrapType(GraphQLType type) {
-        type = assertNotNull(type);
+        assertNotNull(type);
         Stack<GraphQLType> decoration = new Stack<>();
         while (true) {
             decoration.push(type);
@@ -211,5 +271,35 @@ public class GraphQLTypeUtil {
             type = unwrapOne(type);
         }
         return decoration;
+    }
+
+    public static boolean isInterfaceOrUnion(GraphQLType type) {
+        return type instanceof GraphQLInterfaceType || type instanceof GraphQLUnionType;
+    }
+
+    public static boolean isObjectType(GraphQLType type) {
+        return type instanceof GraphQLObjectType;
+    }
+
+
+    /**
+     * This predicate returns true if the schema element is an inbuilt schema element
+     * such as the system scalars and directives or introspection types
+     *
+     * @return true if it's a system schema element
+     */
+    public static Predicate<GraphQLNamedSchemaElement> isSystemElement() {
+        return schemaElement -> {
+            if (schemaElement instanceof GraphQLScalarType) {
+                return ScalarInfo.isGraphqlSpecifiedScalar((GraphQLScalarType) schemaElement);
+            }
+            if (schemaElement instanceof GraphQLDirective) {
+                return DirectiveInfo.isGraphqlSpecifiedDirective((GraphQLDirective) schemaElement);
+            }
+            if (schemaElement instanceof GraphQLNamedType) {
+                return Introspection.isIntrospectionTypes((GraphQLNamedType) schemaElement);
+            }
+            return false;
+        };
     }
 }

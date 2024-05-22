@@ -1,6 +1,7 @@
 package graphql.util;
 
 import graphql.Internal;
+import graphql.collect.ImmutableKit;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -101,10 +102,10 @@ public class TreeParallelTransformer<T> {
             currentContext.setPhase(TraverserContext.Phase.ENTER);
             currentContext.setVar(List.class, myZippers);
             TraversalControl traversalControl = visitor.enter(currentContext);
-            assertNotNull(traversalControl, "result of enter must not be null");
-            assertTrue(QUIT != traversalControl, "can't return QUIT for parallel traversing");
+            assertNotNull(traversalControl, () -> "result of enter must not be null");
+            assertTrue(QUIT != traversalControl, () -> "can't return QUIT for parallel traversing");
             if (traversalControl == ABORT) {
-                this.children = Collections.emptyList();
+                this.children = ImmutableKit.emptyList();
                 tryComplete();
                 return;
             }
@@ -151,7 +152,7 @@ public class TreeParallelTransformer<T> {
         }
 
         private NodeZipper<T> moveUp(T parent, List<NodeZipper<T>> sameParent) {
-            assertNotEmpty(sameParent, "expected at least one zipper");
+            assertNotEmpty(sameParent, () -> "expected at least one zipper");
 
             Map<String, List<T>> childrenMap = new HashMap<>(nodeAdapter.getNamedChildren(parent));
             Map<String, Integer> indexCorrection = new HashMap<>();
@@ -223,7 +224,7 @@ public class TreeParallelTransformer<T> {
             childrenMap.keySet().forEach(key -> {
                 List<T> children = childrenMap.get(key);
                 for (int i = children.size() - 1; i >= 0; i--) {
-                    T child = assertNotNull(children.get(i), "null child for key %s", key);
+                    T child = assertNotNull(children.get(i), () -> String.format("null child for key %s", key));
                     NodeLocation nodeLocation = new NodeLocation(key, i);
                     DefaultTraverserContext<T> context = newContext(child, traverserContext, nodeLocation);
                     contexts.push(context);

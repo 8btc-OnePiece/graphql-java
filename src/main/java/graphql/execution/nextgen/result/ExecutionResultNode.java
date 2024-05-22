@@ -1,5 +1,6 @@
 package graphql.execution.nextgen.result;
 
+import com.google.common.collect.ImmutableList;
 import graphql.Assert;
 import graphql.GraphQLError;
 import graphql.Internal;
@@ -14,14 +15,18 @@ import java.util.Optional;
 
 import static graphql.Assert.assertNotNull;
 
+/**
+ * @deprecated Jan 2022 - We have decided to deprecate the NextGen engine, and it will be removed in a future release.
+ */
+@Deprecated
 @Internal
 public abstract class ExecutionResultNode {
 
     private final ExecutionStepInfo executionStepInfo;
     private final ResolvedValue resolvedValue;
     private final NonNullableFieldWasNullException nonNullableFieldWasNullException;
-    private final List<ExecutionResultNode> children;
-    private final List<GraphQLError> errors;
+    private final ImmutableList<ExecutionResultNode> children;
+    private final ImmutableList<GraphQLError> errors;
 
     /*
      * we are trusting here the the children list is not modified on the outside (no defensive copy)
@@ -34,9 +39,9 @@ public abstract class ExecutionResultNode {
         this.resolvedValue = resolvedValue;
         this.executionStepInfo = executionStepInfo;
         this.nonNullableFieldWasNullException = nonNullableFieldWasNullException;
-        this.children = Collections.unmodifiableList(assertNotNull(children));
+        this.children = ImmutableList.copyOf(assertNotNull(children));
         children.forEach(Assert::assertNotNull);
-        this.errors = Collections.unmodifiableList(errors);
+        this.errors = ImmutableList.copyOf(errors);
     }
 
     public List<GraphQLError> getErrors() {

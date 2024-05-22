@@ -2,8 +2,11 @@ package graphql.execution;
 
 import graphql.Assert;
 import graphql.Internal;
+import graphql.collect.ImmutableKit;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -12,11 +15,120 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 @Internal
 @SuppressWarnings("FutureReturnValueIgnored")
 public class Async {
+
+    public interface CombinedBuilder<T> {
+
+        void add(CompletableFuture<T> completableFuture);
+
+        CompletableFuture<List<T>> await();
+    }
+
+    /**
+     * Combines 1 or more CF. It is a wrapper around CompletableFuture.allOf.
+     *
+     * @param expectedSize how many we expect
+     * @param <T>          for two
+     *
+     * @return a combined builder of CFs
+     */
+    public static <T> CombinedBuilder<T> ofExpectedSize(int expectedSize) {
+        if (expectedSize == 0) {
+            return new Empty<>();
+        } else if (expectedSize == 1) {
+            return new Single<>();
+        } else {
+            return new Many<>(expectedSize);
+        }
+    }
+
+    private static class Empty<T> implements CombinedBuilder<T> {
+
+        private int ix;
+
+        @Override
+        public void add(CompletableFuture<T> completableFuture) {
+            this.ix++;
+        }
+
+
+        @Override
+        public CompletableFuture<List<T>> await() {
+            Assert.assertTrue(ix == 0, () -> "expected size was " + 0 + " got " + ix);
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+    }
+
+    private static class Single<T> implements CombinedBuilder<T> {
+
+        // avoiding array allocation as there is only 1 CF
+        private CompletableFuture<T> completableFuture;
+        private int ix;
+
+        @Override
+        public void add(CompletableFuture<T> completableFuture) {
+            this.completableFuture = completableFuture;
+            this.ix++;
+        }
+
+        @Override
+        public CompletableFuture<List<T>> await() {
+            Assert.assertTrue(ix == 1, () -> "expected size was " + 1 + " got " + ix);
+
+            CompletableFuture<List<T>> overallResult = new CompletableFuture<>();
+            completableFuture
+                    .whenComplete((ignored, exception) -> {
+                        if (exception != null) {
+                            overallResult.completeExceptionally(exception);
+                            return;
+                        }
+                        List<T> results = Collections.singletonList(completableFuture.join());
+                        overallResult.complete(results);
+                    });
+            return overallResult;
+        }
+    }
+
+    private static class Many<T> implements CombinedBuilder<T> {
+
+        private final CompletableFuture<T>[] array;
+        private int ix;
+
+        @SuppressWarnings("unchecked")
+        private Many(int size) {
+            this.array = new CompletableFuture[size];
+            this.ix = 0;
+        }
+
+        @Override
+        public void add(CompletableFuture<T> completableFuture) {
+            array[ix++] = completableFuture;
+        }
+
+        @Override
+        public CompletableFuture<List<T>> await() {
+            Assert.assertTrue(ix == array.length, () -> "expected size was " + array.length + " got " + ix);
+
+            CompletableFuture<List<T>> overallResult = new CompletableFuture<>();
+            CompletableFuture.allOf(array)
+                    .whenComplete((ignored, exception) -> {
+                        if (exception != null) {
+                            overallResult.completeExceptionally(exception);
+                            return;
+                        }
+                        List<T> results = new ArrayList<>(array.length);
+                        for (CompletableFuture<T> future : array) {
+                            results.add(future.join());
+                        }
+                        overallResult.complete(results);
+                    });
+            return overallResult;
+        }
+
+    }
 
     @FunctionalInterface
     public interface CFFactory<T, U> {
@@ -26,15 +138,17 @@ public class Async {
     public static <U> CompletableFuture<List<U>> each(List<CompletableFuture<U>> futures) {
         CompletableFuture<List<U>> overallResult = new CompletableFuture<>();
 
+        @SuppressWarnings("unchecked")
+        CompletableFuture<U>[] arrayOfFutures = futures.toArray(new CompletableFuture[0]);
         CompletableFuture
-                .allOf(futures.toArray(new CompletableFuture[0]))
-                .whenComplete((noUsed, exception) -> {
+                .allOf(arrayOfFutures)
+                .whenComplete((ignored, exception) -> {
                     if (exception != null) {
                         overallResult.completeExceptionally(exception);
                         return;
                     }
-                    List<U> results = new ArrayList<>();
-                    for (CompletableFuture<U> future : futures) {
+                    List<U> results = new ArrayList<>(arrayOfFutures.length);
+                    for (CompletableFuture<U> future : arrayOfFutures) {
                         results.add(future.join());
                     }
                     overallResult.complete(results);
@@ -42,14 +156,14 @@ public class Async {
         return overallResult;
     }
 
-    public static <T, U> CompletableFuture<List<U>> each(Iterable<T> list, BiFunction<T, Integer, CompletableFuture<U>> cfFactory) {
-        List<CompletableFuture<U>> futures = new ArrayList<>();
+    public static <T, U> CompletableFuture<List<U>> each(Collection<T> list, BiFunction<T, Integer, CompletableFuture<U>> cfFactory) {
+        List<CompletableFuture<U>> futures = new ArrayList<>(list.size());
         int index = 0;
         for (T t : list) {
             CompletableFuture<U> cf;
             try {
                 cf = cfFactory.apply(t, index++);
-                Assert.assertNotNull(cf, "cfFactory must return a non null value");
+                Assert.assertNotNull(cf, () -> "cfFactory must return a non null value");
             } catch (Exception e) {
                 cf = new CompletableFuture<>();
                 // Async.each makes sure that it is not a CompletionException inside a CompletionException
@@ -75,7 +189,7 @@ public class Async {
         CompletableFuture<U> cf;
         try {
             cf = cfFactory.apply(iterator.next(), index, tmpResult);
-            Assert.assertNotNull(cf, "cfFactory must return a non null value");
+            Assert.assertNotNull(cf, () -> "cfFactory must return a non null value");
         } catch (Exception e) {
             cf = new CompletableFuture<>();
             cf.completeExceptionally(new CompletionException(e));
@@ -92,7 +206,7 @@ public class Async {
 
 
     /**
-     * Turns an object T into a CompletableFuture if its not already
+     * Turns an object T into a CompletableFuture if it's not already
      *
      * @param t   - the object to check
      * @param <T> for two
@@ -124,65 +238,21 @@ public class Async {
         return result;
     }
 
-    public static <T> void copyResults(CompletableFuture<T> source, CompletableFuture<T> target) {
-        source.whenComplete((o, throwable) -> {
-            if (throwable != null) {
-                target.completeExceptionally(throwable);
-                return;
-            }
-            target.complete(o);
-        });
-    }
-
-
-    public static <U, T> CompletableFuture<U> reduce(List<CompletableFuture<T>> values, U initialValue, BiFunction<U, T, U> aggregator) {
-        CompletableFuture<U> result = new CompletableFuture<>();
-        reduceImpl(values, 0, initialValue, aggregator, result);
-        return result;
-    }
-
-    public static <U, T> CompletableFuture<U> reduce(CompletableFuture<List<T>> values, U initialValue, BiFunction<U, T, U> aggregator) {
-        return values.thenApply(list -> {
-            U result = initialValue;
-            for (T value : list) {
-                result = aggregator.apply(result, value);
-            }
-            return result;
-        });
-    }
-
     public static <U, T> CompletableFuture<List<U>> flatMap(List<T> inputs, Function<T, CompletableFuture<U>> mapper) {
-        List<CompletableFuture<U>> collect = inputs
-                .stream()
-                .map(mapper)
-                .collect(Collectors.toList());
+        List<CompletableFuture<U>> collect = ImmutableKit.map(inputs, mapper);
         return Async.each(collect);
     }
 
-    private static <U, T> void reduceImpl(List<CompletableFuture<T>> values, int curIndex, U curValue, BiFunction<U, T, U> aggregator, CompletableFuture<U> result) {
-        if (curIndex == values.size()) {
-            result.complete(curValue);
-            return;
-        }
-        values.get(curIndex).
-                thenApply(oneValue -> aggregator.apply(curValue, oneValue))
-                .thenAccept(newValue -> reduceImpl(values, curIndex + 1, newValue, aggregator, result));
-    }
-
     public static <U, T> CompletableFuture<List<U>> map(CompletableFuture<List<T>> values, Function<T, U> mapper) {
-        return values.thenApply(list -> list.stream().map(mapper).collect(Collectors.toList()));
+        return values.thenApply(list -> ImmutableKit.map(list, mapper));
     }
 
     public static <U, T> List<CompletableFuture<U>> map(List<CompletableFuture<T>> values, Function<T, U> mapper) {
-        return values
-                .stream()
-                .map(cf -> cf.thenApply(mapper::apply)).collect(Collectors.toList());
+        return ImmutableKit.map(values, cf -> cf.thenApply(mapper));
     }
 
     public static <U, T> List<CompletableFuture<U>> mapCompose(List<CompletableFuture<T>> values, Function<T, CompletableFuture<U>> mapper) {
-        return values
-                .stream()
-                .map(cf -> cf.thenCompose(mapper::apply)).collect(Collectors.toList());
+        return ImmutableKit.map(values, cf -> cf.thenCompose(mapper));
     }
 
 }

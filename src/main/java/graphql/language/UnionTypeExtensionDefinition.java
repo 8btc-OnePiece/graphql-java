@@ -1,18 +1,20 @@
 package graphql.language;
 
+import com.google.common.collect.ImmutableList;
 import graphql.Internal;
 import graphql.PublicApi;
+import graphql.collect.ImmutableKit;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
+import static graphql.collect.ImmutableKit.emptyList;
 
 @PublicApi
-public class UnionTypeExtensionDefinition extends UnionTypeDefinition {
+public class UnionTypeExtensionDefinition extends UnionTypeDefinition implements SDLExtensionDefinition {
 
     @Internal
     protected UnionTypeExtensionDefinition(String name,
@@ -57,35 +59,41 @@ public class UnionTypeExtensionDefinition extends UnionTypeDefinition {
         return new Builder();
     }
 
+    @Override
+    public UnionTypeExtensionDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transformExtension(builder -> builder
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+                .memberTypes(newChildren.getChildren(CHILD_MEMBER_TYPES))
+        );
+    }
+
     public UnionTypeExtensionDefinition transformExtension(Consumer<Builder> builderConsumer) {
         Builder builder = new Builder(this);
         builderConsumer.accept(builder);
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
-        private List<Comment> comments = new ArrayList<>();
+        private ImmutableList<Comment> comments = emptyList();
         private String name;
         private Description description;
-        private List<Directive> directives = new ArrayList<>();
-        private List<Type> memberTypes = new ArrayList<>();
+        private ImmutableList<Directive> directives = emptyList();
+        private ImmutableList<Type> memberTypes = emptyList();
         private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
         private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
 
-
-        private Builder(UnionTypeExtensionDefinition existing) {
+        private Builder(UnionTypeDefinition existing) {
             this.sourceLocation = existing.getSourceLocation();
-            this.comments = existing.getComments();
+            this.comments = ImmutableList.copyOf(existing.getComments());
             this.name = existing.getName();
             this.description = existing.getDescription();
-            this.directives = existing.getDirectives();
-            this.memberTypes = existing.getMemberTypes();
+            this.directives = ImmutableList.copyOf(existing.getDirectives());
+            this.memberTypes = ImmutableList.copyOf(existing.getMemberTypes());
             this.ignoredChars = existing.getIgnoredChars();
-            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
@@ -94,7 +102,7 @@ public class UnionTypeExtensionDefinition extends UnionTypeDefinition {
         }
 
         public Builder comments(List<Comment> comments) {
-            this.comments = comments;
+            this.comments = ImmutableList.copyOf(comments);
             return this;
         }
 
@@ -108,13 +116,24 @@ public class UnionTypeExtensionDefinition extends UnionTypeDefinition {
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
-            this.directives = directives;
+            this.directives = ImmutableList.copyOf(directives);
+            return this;
+        }
+
+        public Builder directive(Directive directive) {
+            this.directives = ImmutableKit.addToList(directives, directive);
             return this;
         }
 
         public Builder memberTypes(List<Type> memberTypes) {
-            this.memberTypes = memberTypes;
+            this.memberTypes = ImmutableList.copyOf(memberTypes);
+            return this;
+        }
+
+        public Builder memberType(Type memberType) {
+            this.memberTypes = ImmutableKit.addToList(memberTypes, memberType);
             return this;
         }
 

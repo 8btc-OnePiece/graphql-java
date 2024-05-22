@@ -1,26 +1,31 @@
 package graphql.execution.nextgen.result;
 
+import com.google.common.collect.ImmutableList;
 import graphql.GraphQLError;
 import graphql.Internal;
+import graphql.collect.ImmutableKit;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * @deprecated Jan 2022 - We have decided to deprecate the NextGen engine, and it will be removed in a future release.
+ */
+@Deprecated
 @Internal
 public class ResolvedValue {
 
     private final Object completedValue;
     private final Object localContext;
     private final boolean nullValue;
-    private final List<GraphQLError> errors;
+    private final ImmutableList<GraphQLError> errors;
 
     private ResolvedValue(Builder builder) {
         this.completedValue = builder.completedValue;
         this.localContext = builder.localContext;
         this.nullValue = builder.nullValue;
-        this.errors = builder.errors;
+        this.errors = ImmutableList.copyOf(builder.errors);
     }
 
     public Object getCompletedValue() {
@@ -36,7 +41,7 @@ public class ResolvedValue {
     }
 
     public List<GraphQLError> getErrors() {
-        return Collections.unmodifiableList(errors);
+        return errors;
     }
 
     public static Builder newResolvedValue() {
@@ -55,7 +60,7 @@ public class ResolvedValue {
         private Object completedValue;
         private Object localContext;
         private boolean nullValue;
-        private List<GraphQLError> errors = Collections.emptyList();
+        private List<GraphQLError> errors = ImmutableKit.emptyList();
 
         private Builder() {
 
