@@ -436,6 +436,10 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
      * @param dataFetchingEnvironment
      */
     private static void filedSupplementDirectiveArguments(DataFetchingEnvironmentImpl dataFetchingEnvironment) {
+        if (dataFetchingEnvironment.getFieldDefinition() == null
+                || dataFetchingEnvironment.getFieldDefinition().getArguments() == null) {
+            return;
+        }
         dataFetchingEnvironment.fieldDefinition.getArguments().stream().forEach(graphQLArgument -> {
             supplementDirectiveArgumentsFromSchema(graphQLArgument.getDirectives(), dataFetchingEnvironment.graphQLSchema);
         });
@@ -462,18 +466,18 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
      * @param graphQLSchema
      */
     private static void supplementDirectiveArgumentsFromSchema(List<GraphQLDirective> providedDirectives, GraphQLSchema graphQLSchema) {
-        providedDirectives.stream().forEach(graphQLDirective -> {
+        providedDirectives.forEach(graphQLDirective -> {
             GraphQLDirective schemaDirective = graphQLSchema.getDirective(graphQLDirective.getName());
             if (Objects.isNull(schemaDirective)) {
                 return;
             }
-            schemaDirective.getArguments().stream().forEach(
+            schemaDirective.getArguments().forEach(
                     graphQLArg -> {
                         if (!(graphQLArg.getType() instanceof GraphQLScalarType) && !(graphQLArg.getType() instanceof GraphQLEnumType)) {
                             return;
                         }
 
-                        if (!Objects.isNull(graphQLArg.getDefaultValue()) && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
+                        if (graphQLArg.getArgumentDefaultValue().isSet() && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
                             try {
                                 java.lang.reflect.Field arguments = graphQLDirective.getClass().getDeclaredField("arguments");
                                 arguments.setAccessible(true);
@@ -481,12 +485,10 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
                                 java.lang.reflect.Field schemaArgumentValue = graphQLArg.getClass().getDeclaredField("value");
                                 schemaArgumentValue.setAccessible(true);
 
-                                schemaArgumentValue.set(graphQLArg, serialize(graphQLArg.getType(), graphQLArg.getDefaultValue()));
+                                schemaArgumentValue.set(graphQLArg, graphQLArg.getArgumentDefaultValue());
 
                                 ((List<GraphQLArgument>) arguments.get(graphQLDirective)).add(graphQLArg);
-                            } catch (NoSuchFieldException e) {
-                                throw new RuntimeException(e);
-                            } catch (IllegalAccessException e) {
+                            } catch (NoSuchFieldException | IllegalAccessException e) {
                                 throw new RuntimeException(e);
                             }
                         }
@@ -495,7 +497,5 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         });
     }
 
-    private static Object serialize(GraphQLType type, Object value) {
-        return type instanceof GraphQLScalarType ? ((GraphQLScalarType) type).getCoercing().serialize(value) : ((GraphQLEnumType) type).getCoercing().serialize(value);
-    }
+
 }
