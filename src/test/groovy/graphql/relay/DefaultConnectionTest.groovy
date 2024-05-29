@@ -9,8 +9,8 @@ class DefaultConnectionTest extends Specification {
         def edges1 = ImmutableList.of(new DefaultEdge("a", new DefaultConnectionCursor("a")))
         def edges2 = ImmutableList.of(new DefaultEdge("b", new DefaultConnectionCursor("b")))
 
-        def pageInfo1 = new DefaultPageInfo(new DefaultConnectionCursor("c"), new DefaultConnectionCursor("c"), true, false)
-        def pageInfo2 = new DefaultPageInfo(new DefaultConnectionCursor("d"), new DefaultConnectionCursor("d"), false, true)
+        def pageInfo1 = new DefaultPageInfo(0 ,new DefaultConnectionCursor("c"), new DefaultConnectionCursor("c"), true, false)
+        def pageInfo2 = new DefaultPageInfo(0, new DefaultConnectionCursor("d"), new DefaultConnectionCursor("d"), false, true)
 
         expect:
 

@@ -7,11 +7,11 @@ class DefaultPageInfoTest extends Specification {
     def "test equality and hashcode"() {
         expect:
 
-        assert new DefaultPageInfo(new DefaultConnectionCursor(ls), new DefaultConnectionCursor(le), lp, ln).equals(
-                new DefaultPageInfo(new DefaultConnectionCursor(rs), new DefaultConnectionCursor(re), rp, rn)) == isEqual
+        assert new DefaultPageInfo(0, new DefaultConnectionCursor(ls), new DefaultConnectionCursor(le), lp, ln).equals(
+                new DefaultPageInfo(0, new DefaultConnectionCursor(rs), new DefaultConnectionCursor(re), rp, rn)) == isEqual
 
-        assert (new DefaultPageInfo(new DefaultConnectionCursor(ls), new DefaultConnectionCursor(le), lp, ln).hashCode() ==
-                new DefaultPageInfo(new DefaultConnectionCursor(rs), new DefaultConnectionCursor(re), rp, rn).hashCode()) == isEqual
+        assert (new DefaultPageInfo(0, new DefaultConnectionCursor(ls), new DefaultConnectionCursor(le), lp, ln).hashCode() ==
+                new DefaultPageInfo(0, new DefaultConnectionCursor(rs), new DefaultConnectionCursor(re), rp, rn).hashCode()) == isEqual
 
         where:
 

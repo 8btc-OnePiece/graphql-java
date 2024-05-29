@@ -1,6 +1,6 @@
 package graphql;
 
-import graphql.cachecontrol.CacheControl;
+
 import graphql.execution.AbortExecutionException;
 import graphql.execution.Async;
 import graphql.execution.AsyncExecutionStrategy;
