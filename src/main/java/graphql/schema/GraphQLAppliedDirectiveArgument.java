@@ -2,8 +2,8 @@ package graphql.schema;
 
 
 import graphql.Assert;
+import graphql.GraphQLContext;
 import graphql.PublicApi;
-import graphql.collect.ImmutableKit;
 import graphql.language.Argument;
 import graphql.language.Value;
 import graphql.util.TraversalControl;
@@ -13,6 +13,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
@@ -25,7 +26,7 @@ import static graphql.execution.ValuesResolver.getInputValueImpl;
  * You can think of them as 'instances' of {@link GraphQLArgument}, when applied to a directive on a schema element
  */
 @PublicApi
-public class GraphQLAppliedDirectiveArgument implements GraphQLNamedSchemaElement {
+public class GraphQLAppliedDirectiveArgument implements GraphQLNamedSchemaElement, GraphQLInputSchemaElement {
 
     private final String name;
     private final InputValueWithState value;
@@ -74,7 +75,7 @@ public class GraphQLAppliedDirectiveArgument implements GraphQLNamedSchemaElemen
     }
 
     /**
-     * This swill give out an internal java value based on the semantics captured
+     * This will give out an internal java value based on the semantics captured
      * in the {@link InputValueWithState} from {@link GraphQLAppliedDirectiveArgument#getArgumentValue()}
      *
      * Note : You MUST only call this on a {@link GraphQLAppliedDirectiveArgument} that is part of a fully formed schema.  We need
@@ -89,7 +90,7 @@ public class GraphQLAppliedDirectiveArgument implements GraphQLNamedSchemaElemen
      * @return a value of type T which is the java value of the argument
      */
     public <T> T getValue() {
-        return getInputValueImpl(getType(), value);
+        return getInputValueImpl(getType(), value, GraphQLContext.getDefault(), Locale.getDefault());
     }
 
     /**

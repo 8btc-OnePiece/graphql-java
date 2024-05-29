@@ -49,8 +49,27 @@ public class FpKit {
         return list.stream().collect(Collectors.groupingBy(function, LinkedHashMap::new, mapping(Function.identity(), ImmutableList.toImmutableList())));
     }
 
+    public static <T, NewKey> Map<NewKey, ImmutableList<T>> filterAndGroupingBy(Collection<T> list,
+                                                                                Predicate<? super T> predicate,
+                                                                                Function<T, NewKey> function) {
+        return list.stream().filter(predicate).collect(Collectors.groupingBy(function, LinkedHashMap::new, mapping(Function.identity(), ImmutableList.toImmutableList())));
+    }
+
+    public static <T, NewKey> Map<NewKey, ImmutableList<T>> groupingBy(Stream<T> stream, Function<T, NewKey> function) {
+        return stream.collect(Collectors.groupingBy(function, LinkedHashMap::new, mapping(Function.identity(), ImmutableList.toImmutableList())));
+    }
+
     public static <T, NewKey> Map<NewKey, T> groupingByUniqueKey(Collection<T> list, Function<T, NewKey> keyFunction) {
         return list.stream().collect(Collectors.toMap(
+                keyFunction,
+                identity(),
+                throwingMerger(),
+                LinkedHashMap::new)
+        );
+    }
+
+    public static <T, NewKey> Map<NewKey, T> groupingByUniqueKey(Stream<T> stream, Function<T, NewKey> keyFunction) {
+        return stream.collect(Collectors.toMap(
                 keyFunction,
                 identity(),
                 throwingMerger(),
@@ -246,7 +265,7 @@ public class FpKit {
         return cf.thenApply(FpKit::flatList);
     }
 
-    public static <T> List<T> flatList(List<List<T>> listLists) {
+    public static <T> List<T> flatList(Collection<List<T>> listLists) {
         return listLists.stream()
                 .flatMap(List::stream)
                 .collect(ImmutableList.toImmutableList());
@@ -333,6 +352,7 @@ public class FpKit {
     /**
      * Faster set intersection.
      *
+     * @param <T> for two
      * @param set1 first set
      * @param set2 second set
      * @return intersection set

@@ -10,9 +10,7 @@ import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLInputObjectField;
 import graphql.schema.GraphQLInputObjectType;
 import graphql.schema.GraphQLInterfaceType;
-import graphql.schema.GraphQLList;
 import graphql.schema.GraphQLNamedType;
-import graphql.schema.GraphQLNonNull;
 import graphql.schema.GraphQLObjectType;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchemaElement;
@@ -134,7 +132,7 @@ public class GraphQLTypeCollectingVisitor extends GraphQLTypeVisitorStub {
 
 
     /*
-        From http://facebook.github.io/graphql/#sec-Type-System
+        From https://spec.graphql.org/October2021/#sec-Type-System
 
            All types within a GraphQL schema must have unique names. No two provided types may have the same name.
            No provided type may have a name which conflicts with any built in types (including Scalar and Introspection types).

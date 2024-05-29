@@ -2,9 +2,9 @@ package graphql.schema;
 
 
 import com.google.common.collect.ImmutableMap;
+import graphql.DeprecatedAt;
 import graphql.GraphQLContext;
 import graphql.Internal;
-import graphql.cachecontrol.CacheControl;
 import graphql.collect.ImmutableKit;
 import graphql.collect.ImmutableMapWithNullValues;
 import graphql.execution.ExecutionContext;
@@ -41,7 +41,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     private final DataFetchingFieldSelectionSet selectionSet;
     private final Supplier<ExecutionStepInfo> executionStepInfo;
     private final DataLoaderRegistry dataLoaderRegistry;
-    private final CacheControl cacheControl;
     private final Locale locale;
     private final OperationDefinition operationDefinition;
     private final Document document;
@@ -65,7 +64,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         this.selectionSet = builder.selectionSet;
         this.executionStepInfo = builder.executionStepInfo;
         this.dataLoaderRegistry = builder.dataLoaderRegistry;
-        this.cacheControl = builder.cacheControl;
         this.locale = builder.locale;
         this.operationDefinition = builder.operationDefinition;
         this.document = builder.document;
@@ -92,7 +90,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
                 .graphQLSchema(executionContext.getGraphQLSchema())
                 .fragmentsByName(executionContext.getFragmentsByName())
                 .dataLoaderRegistry(executionContext.getDataLoaderRegistry())
-                .cacheControl(executionContext.getCacheControl())
                 .locale(executionContext.getLocale())
                 .document(executionContext.getDocument())
                 .operationDefinition(executionContext.getOperationDefinition())
@@ -216,12 +213,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
     }
 
     @Override
-    @Deprecated
-    public CacheControl getCacheControl() {
-        return cacheControl;
-    }
-
-    @Override
     public Locale getLocale() {
         return locale;
     }
@@ -264,7 +255,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         private DataFetchingFieldSelectionSet selectionSet;
         private Supplier<ExecutionStepInfo> executionStepInfo;
         private DataLoaderRegistry dataLoaderRegistry;
-        private CacheControl cacheControl;
         private Locale locale;
         private OperationDefinition operationDefinition;
         private Document document;
@@ -290,7 +280,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
             this.selectionSet = env.selectionSet;
             this.executionStepInfo = env.executionStepInfo;
             this.dataLoaderRegistry = env.dataLoaderRegistry;
-            this.cacheControl = env.cacheControl;
             this.locale = env.locale;
             this.operationDefinition = env.operationDefinition;
             this.document = env.document;
@@ -316,6 +305,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         }
 
         @Deprecated
+        @DeprecatedAt("2021-07-05")
         public Builder context(Object context) {
             this.context = context;
             return this;
@@ -387,12 +377,6 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
 
         public Builder dataLoaderRegistry(DataLoaderRegistry dataLoaderRegistry) {
             this.dataLoaderRegistry = dataLoaderRegistry;
-            return this;
-        }
-
-        @Deprecated
-        public Builder cacheControl(CacheControl cacheControl) {
-            this.cacheControl = cacheControl;
             return this;
         }
 

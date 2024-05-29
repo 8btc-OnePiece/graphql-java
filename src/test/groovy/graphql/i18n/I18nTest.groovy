@@ -16,19 +16,6 @@ class I18nTest extends Specification {
         thrown(AssertException)
     }
 
-    def "all enums have resources and decent shapes"() {
-        when:
-        def bundleTypes = BundleType.values()
-        then:
-        for (BundleType bundleType : (bundleTypes)) {
-            // Currently only testing the default English bundles
-            def i18n = I18n.i18n(bundleType, Locale.ENGLISH)
-            assert i18n.resourceBundle != null
-            assertBundleStaticShape(i18n.resourceBundle)
-        }
-    }
-
-
     def "missing resource bundles default to a base version"() {
         // see https://saimana.com/list-of-country-locale-code/
 
@@ -66,6 +53,26 @@ class I18nTest extends Specification {
         msg == expected
     }
 
+    def "all enums have resources and decent shapes"() {
+        when:
+        def bundleTypes = BundleType.values()
+        then:
+        for (BundleType bundleType : (bundleTypes)) {
+            // Currently only testing the default English bundles
+            def i18n = I18n.i18n(bundleType, Locale.ENGLISH)
+            assert i18n.resourceBundle != null
+            assertBundleStaticShape(i18n.resourceBundle)
+        }
+    }
+
+    def "A non-default bundle can be read"() {
+        def i18n = I18n.i18n(BundleType.Validation, Locale.GERMAN)
+        when:
+        def message = i18n.msg("ExecutableDefinitions.notExecutableType")
+        then:
+        message == "Validierungsfehler ({0}) : Type definition '{1}' ist nicht ausführbar"
+    }
+
     def "integration test of valid messages"() {
         def sdl = """
             type Query {
@@ -89,6 +96,15 @@ class I18nTest extends Specification {
         !er.errors.isEmpty()
         er.errors[0].message == "Validation error (SubselectionRequired@[field]) : Subselection required for type 'Subselection' of field 'field'"
 
+        when:
+        locale = Locale.GERMANY
+        ei = ExecutionInput.newExecutionInput().query("query missingSubselectionQ { field(arg : 1) }")
+                .locale(locale)
+                .build()
+        er = graphQL.execute(ei)
+        then:
+        !er.errors.isEmpty()
+        er.errors[0].message == "Validierungsfehler (SubselectionRequired@[field]) : Unterauswahl erforderlich für Typ 'Subselection' des Feldes 'field'"
 
         when:
         locale = Locale.getDefault()
