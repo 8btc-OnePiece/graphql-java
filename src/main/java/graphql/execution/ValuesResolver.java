@@ -18,9 +18,9 @@ import graphql.language.VariableReference;
 import graphql.normalized.NormalizedInputValue;
 import graphql.schema.CoercingParseLiteralException;
 import graphql.schema.CoercingParseValueException;
+import graphql.schema.GraphQLAppliedDirective;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLCodeRegistry;
-import graphql.schema.GraphQLDirective;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLInputObjectType;
 import graphql.schema.GraphQLInputType;
@@ -65,7 +65,9 @@ public class ValuesResolver {
 
     private static final String NonNullParam = "nonNullParam";
 
-    private static final ObjectValue nullObjectValue = new ObjectValue(Collections.singletonList(new ObjectField("", NullValue.of())));
+    private static final InputValueWithState nullObjectValue = InputValueWithState.newLiteralValue(
+            new ObjectValue(Collections.singletonList(new ObjectField("", NullValue.of())))
+    );
 
     /**
      * This method coerces the "raw" variables values provided to the engine. The coerced values will be used to
@@ -78,6 +80,7 @@ public class ValuesResolver {
      * @param rawVariables        the supplied variables
      * @param graphqlContext      the GraphqlContext to use
      * @param locale              the Locale to use
+     *
      * @return coerced variable values as a map
      */
     public static CoercedVariables coerceVariableValues(GraphQLSchema schema,
@@ -105,6 +108,7 @@ public class ValuesResolver {
      * @param rawVariables        the raw variables
      * @param graphqlContext      the GraphqlContext to use
      * @param locale              the Locale to use
+     *
      * @return a map of the normalised values
      */
     public static Map<String, NormalizedInputValue> getNormalizedVariableValues(
@@ -151,6 +155,7 @@ public class ValuesResolver {
      * @param coercedVariables the coerced variables
      * @param graphqlContext   the GraphqlContext to use
      * @param locale           the Locale to use
+     *
      * @return a map of named argument values
      */
     public static Map<String, Object> getArgumentValues(
@@ -186,41 +191,17 @@ public class ValuesResolver {
         for (GraphQLArgument argumentDefinition : argumentTypes) {
             String argumentName = argumentDefinition.getName();
             Argument argument = argumentMap.get(argumentName);
-            GraphQLInputType argumentType = argumentDefinition.getType();
-            InputValueWithState defaultValue = argumentDefinition.getArgumentDefaultValue();
-            Object value = null;
-            GraphQLDirective noNullParam = argumentDefinition.getDirective(NonNullParam);
             if (argument == null) {
-                // 变量为null且无默认值
-                if (noNullParam != null
-                        && defaultValue.isNotSet()
-                        && argumentType instanceof GraphQLInputObjectType) {
-                    value = literalToNormalizedValue(
-                            DEFAULT_FIELD_VISIBILITY,
-                            argumentType,
-                            nullObjectValue,
-                            normalizedVariables
-                    );
-                } else {
-                    continue;
-                }
+                continue;
             }
+
             // If a variable doesn't exist then we can't put it into the result Map
-            // 引用的值不存在
-            else if (isVariableAbsent(argument.getValue(), normalizedVariables)) {
-                if(noNullParam != null) {
-                    value = literalToNormalizedValue(
-                            DEFAULT_FIELD_VISIBILITY,
-                            argumentType,
-                            nullObjectValue,
-                            normalizedVariables
-                    );
-                } else {
-                    continue;
-                }
-            } else {
-                value = literalToNormalizedValue(DEFAULT_FIELD_VISIBILITY, argumentType, argument.getValue(), normalizedVariables);
+            if (isVariableAbsent(argument.getValue(), normalizedVariables)) {
+                continue;
             }
+
+            GraphQLInputType argumentType = argumentDefinition.getType();
+            Object value = literalToNormalizedValue(DEFAULT_FIELD_VISIBILITY, argumentType, argument.getValue(), normalizedVariables);
             result.put(argumentName, new NormalizedInputValue(simplePrint(argumentType), value));
         }
         return result;
@@ -248,6 +229,7 @@ public class ValuesResolver {
      * @param type                the type of input value
      * @param graphqlContext      the GraphqlContext to use
      * @param locale              the Locale to use
+     *
      * @return a value converted to a literal
      */
     public static Value<?> valueToLiteral(
@@ -304,6 +286,7 @@ public class ValuesResolver {
      * @param type            the type of input value
      * @param graphqlContext  the GraphqlContext to use
      * @param locale          the Locale to use
+     *
      * @return a value converted to an internal value
      */
     public static Object externalValueToInternalValue(
@@ -403,10 +386,19 @@ public class ValuesResolver {
                 GraphQLType unwrappedType = GraphQLTypeUtil.unwrapNonNull(argumentType);
                 if (unwrappedType instanceof GraphQLInputObjectType) {
                     GraphQLInputObjectType inputObjectType = (GraphQLInputObjectType) unwrappedType;
-                    if (inputObjectType.isOneOf() && !ValuesResolverConversion.isNullValue(value)) {
+                    if (inputObjectType.isOneOf() && ! ValuesResolverConversion.isNullValue(value)) {
                         validateOneOfInputTypes(inputObjectType, argumentValue, argumentName, value, locale);
                     }
                 }
+            }
+            if(coercedValues.get(argumentName) == null && argumentDefinition.getAppliedDirective(NonNullParam) != null) {
+                coercedValues.put(argumentName, ValuesResolverConversion.defaultValueToInternalValue(
+                        inputInterceptor,
+                        fieldVisibility,
+                        nullObjectValue,
+                        argumentType,
+                        graphqlContext,
+                        locale));
             }
 
         }

@@ -291,10 +291,15 @@ publishing {
 
     publications {
         maven(MavenPublication) {
+            from components.java
+
             groupId = group
             artifactId = rootProject.name
             version = version
-            from components.java
+            // 添加源码artifact
+            artifact sourcesJar {
+                archiveClassifier = "sources"
+            }
 
         }
     }
