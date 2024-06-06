@@ -12,7 +12,10 @@ import graphql.execution.ExecutionId;
 import graphql.execution.ExecutionStepInfo;
 import graphql.execution.MergedField;
 import graphql.execution.directives.QueryDirectives;
-import graphql.language.*;
+import graphql.language.Document;
+import graphql.language.Field;
+import graphql.language.FragmentDefinition;
+import graphql.language.OperationDefinition;
 import org.dataloader.DataLoader;
 import org.dataloader.DataLoaderRegistry;
 
@@ -20,7 +23,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
-import java.util.*;
 
 @SuppressWarnings({"unchecked", "TypeParameterUnusedInFormals"})
 @Internal
@@ -406,80 +408,7 @@ public class DataFetchingEnvironmentImpl implements DataFetchingEnvironment {
         }
 
         public DataFetchingEnvironment build() {
-            DataFetchingEnvironmentImpl dataFetchingEnvironment = new DataFetchingEnvironmentImpl(this);
-
-            filedSupplementDirectiveArguments(dataFetchingEnvironment);
-
-            return dataFetchingEnvironment;
+            return new DataFetchingEnvironmentImpl(this);
         }
     }
-
-    /**
-     * 将对所有的filed的argument的directives、directives、type的directives赋予定义directives时的默认值
-     *
-     * @param dataFetchingEnvironment
-     */
-    private static void filedSupplementDirectiveArguments(DataFetchingEnvironmentImpl dataFetchingEnvironment) {
-        if (dataFetchingEnvironment.getFieldDefinition() == null
-                || dataFetchingEnvironment.getFieldDefinition().getArguments() == null) {
-            return;
-        }
-        dataFetchingEnvironment.fieldDefinition.getArguments().stream().forEach(graphQLArgument -> {
-            supplementDirectiveArgumentsFromSchema(graphQLArgument.getDirectives(), dataFetchingEnvironment.graphQLSchema);
-        });
-
-        supplementDirectiveArgumentsFromSchema(dataFetchingEnvironment.fieldDefinition.getDirectives(), dataFetchingEnvironment.graphQLSchema);
-
-        if (dataFetchingEnvironment.fieldType instanceof GraphQLObjectType) {
-            supplementDirectiveArgumentsFromSchema(((GraphQLObjectType) dataFetchingEnvironment.fieldType).getDirectives(), dataFetchingEnvironment.graphQLSchema);
-        } else if (dataFetchingEnvironment.fieldType instanceof GraphQLScalarType) {
-            supplementDirectiveArgumentsFromSchema(((GraphQLScalarType) dataFetchingEnvironment.fieldType).getDirectives(), dataFetchingEnvironment.graphQLSchema);
-        } else if (dataFetchingEnvironment.fieldType instanceof GraphQLUnionType) {
-            supplementDirectiveArgumentsFromSchema(((GraphQLUnionType) dataFetchingEnvironment.fieldType).getDirectives(), dataFetchingEnvironment.graphQLSchema);
-        } else if (dataFetchingEnvironment.fieldType instanceof GraphQLEnumType) {
-            supplementDirectiveArgumentsFromSchema(((GraphQLEnumType) dataFetchingEnvironment.fieldType).getDirectives(), dataFetchingEnvironment.graphQLSchema);
-        } else if (dataFetchingEnvironment.fieldType instanceof GraphQLInterfaceType) {
-            supplementDirectiveArgumentsFromSchema(((GraphQLInterfaceType) dataFetchingEnvironment.fieldType).getDirectives(), dataFetchingEnvironment.graphQLSchema);
-        }
-    }
-
-    /**
-     * 通过Schema补充directive的argument（存在默认值）
-     *
-     * @param providedDirectives
-     * @param graphQLSchema
-     */
-    private static void supplementDirectiveArgumentsFromSchema(List<GraphQLDirective> providedDirectives, GraphQLSchema graphQLSchema) {
-        providedDirectives.forEach(graphQLDirective -> {
-            GraphQLDirective schemaDirective = graphQLSchema.getDirective(graphQLDirective.getName());
-            if (Objects.isNull(schemaDirective)) {
-                return;
-            }
-            schemaDirective.getArguments().forEach(
-                    graphQLArg -> {
-                        if (!(graphQLArg.getType() instanceof GraphQLScalarType) && !(graphQLArg.getType() instanceof GraphQLEnumType)) {
-                            return;
-                        }
-
-                        if (graphQLArg.getArgumentDefaultValue().isSet() && Objects.isNull(graphQLDirective.getArgument(graphQLArg.getName()))) {
-                            try {
-                                java.lang.reflect.Field arguments = graphQLDirective.getClass().getDeclaredField("arguments");
-                                arguments.setAccessible(true);
-
-                                java.lang.reflect.Field schemaArgumentValue = graphQLArg.getClass().getDeclaredField("value");
-                                schemaArgumentValue.setAccessible(true);
-
-                                schemaArgumentValue.set(graphQLArg, graphQLArg.getArgumentDefaultValue());
-
-                                ((List<GraphQLArgument>) arguments.get(graphQLDirective)).add(graphQLArg);
-                            } catch (NoSuchFieldException | IllegalAccessException e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-                    }
-            );
-        });
-    }
-
-
 }
