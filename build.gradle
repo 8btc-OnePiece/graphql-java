@@ -67,7 +67,7 @@ def releaseVersion = System.env.RELEASE_VERSION
 def antlrVersion = '4.11.1' // https://mvnrepository.com/artifact/org.antlr/antlr4-runtime
 def guavaVersion = '32.1.2-jre'
 //version = releaseVersion ? releaseVersion : getDevelopmentVersion()
-version = '21.3.OnePiece.10.0.0-beta-1'
+version = '21.3.OnePiece.10.0.1'
 group = 'com.graphql-java'
 
 gradle.buildFinished { buildResult ->
